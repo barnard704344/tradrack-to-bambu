@@ -21,30 +21,11 @@ import yaml
 
 from .bambu_client import BambuMQTTClient
 from .bridge import Bridge
+from .config import load_config
 from .gcode_processor import GCodeScanner
 from .happy_hare import HappyHareController
 
 logger = logging.getLogger("tradrack_bridge")
-
-
-def load_config(config_path: str) -> dict:
-    """Load and validate the YAML configuration file."""
-    config_path = Path(config_path)
-    if not config_path.exists():
-        print(f"Error: Config file not found: {config_path}")
-        sys.exit(1)
-
-    with open(config_path, "r") as f:
-        config = yaml.safe_load(f)
-
-    # Basic validation
-    required_sections = ["bambu", "moonraker", "happy_hare", "bridge"]
-    for section in required_sections:
-        if section not in config:
-            print(f"Error: Missing '{section}' section in config")
-            sys.exit(1)
-
-    return config
 
 
 def setup_logging(config: dict):

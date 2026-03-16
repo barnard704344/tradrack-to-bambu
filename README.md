@@ -45,6 +45,7 @@ This project bridges the gap between Bambu's proprietary firmware and the open-s
 
 ```
 tradrack-to-bambu/
+├── setup.sh                  # Setup script (creates venv, installs deps)
 ├── config/
 │   └── config.yaml           # Bridge configuration
 ├── src/
@@ -88,8 +89,9 @@ cd Happy-Hare && ./install.sh  # Select TradRack, 8 gates
 git clone https://github.com/barnard704344/tradrack-to-bambu.git
 cd tradrack-to-bambu
 
-# Install Python dependencies
-pip install -r requirements.txt
+# Run the setup script (creates venv, installs dependencies)
+chmod +x setup.sh
+./setup.sh
 
 # Edit config with your P1S details
 nano config/config.yaml
@@ -106,6 +108,8 @@ comments at every filament swap automatically.
 ### 4. Check Connectivity
 
 ```bash
+cd ~/tradrack-to-bambu
+source venv/bin/activate
 python -m src.main status
 ```
 
@@ -114,6 +118,7 @@ This verifies the bridge can reach both the P1S (MQTT) and Happy Hare (Moonraker
 ### 5. Run the Bridge
 
 ```bash
+source venv/bin/activate
 python -m src.main bridge
 ```
 
@@ -124,6 +129,7 @@ filament change automatically.
 ### 6. Test a Tool Change
 
 ```bash
+source venv/bin/activate
 # Test Happy Hare tool change to gate 0
 python -m src.main test 0
 ```
