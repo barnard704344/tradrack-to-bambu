@@ -4,12 +4,17 @@ BambuLab P1S MQTT Client for LAN Mode.
 Connects to the P1S via MQTT over TLS (port 8883) to monitor print status,
 detect M600/pause events, and send pause/resume commands.
 
+Also provides FTPS access to fetch G-code files from the P1S SD card
+so the bridge can auto-scan the tool-change sequence.
+
 Protocol reference:
 - Topic: device/{serial}/report  (printer -> client)
 - Topic: device/{serial}/request (client -> printer)
 - Messages are JSON payloads
 """
 
+import ftplib
+import io
 import json
 import logging
 import ssl
@@ -60,11 +65,13 @@ class BambuMQTTClient:
     methods to send commands (pause, resume, stop).
     """
 
-    def __init__(self, host: str, access_code: str, serial: str, port: int = 8883):
+    def __init__(self, host: str, access_code: str, serial: str,
+                 port: int = 8883, ftp_port: int = 990):
         self.host = host
         self.access_code = access_code
         self.serial = serial
         self.port = port
+        self.ftp_port = ftp_port
 
         self._client: Optional[mqtt.Client] = None
         self._connected = threading.Event()
@@ -327,3 +334,48 @@ class BambuMQTTClient:
             time.sleep(0.5)
         logger.warning(f"Timed out waiting for status {target.value}")
         return False
+
+    def fetch_gcode(self, filename: str = None) -> Optional[str]:
+        """
+        Fetch G-code file content from the P1S via FTPS.
+
+        If filename is None, uses the current print job's gcode_file.
+        The P1S stores G-code in /cache/ on its internal storage.
+
+        Returns the G-code as a string, or None on failure.
+        """
+        if filename is None:
+            filename = self._state.gcode_file
+            if not filename:
+                logger.error("No G-code filename available (is a print running?)")
+                return None
+
+        # P1S FTPS: implicit TLS on port 990, user "bblp", password is access code
+        logger.info(f"Fetching G-code from P1S via FTPS: {filename}")
+        try:
+            ssl_ctx = ssl.create_default_context()
+            ssl_ctx.check_hostname = False
+            ssl_ctx.verify_mode = ssl.CERT_NONE
+
+            ftp = ftplib.FTP_TLS(context=ssl_ctx)
+            ftp.connect(self.host, self.ftp_port, timeout=15)
+            ftp.login("bblp", self.access_code)
+            ftp.prot_p()  # switch to secure data connection
+
+            # P1S G-code is stored under /cache/
+            remote_path = f"/cache/{filename}" if not filename.startswith("/") else filename
+
+            buffer = io.BytesIO()
+            ftp.retrbinary(f"RETR {remote_path}", buffer.write)
+            ftp.quit()
+
+            gcode_text = buffer.getvalue().decode("utf-8", errors="replace")
+            logger.info(f"Fetched G-code: {len(gcode_text)} bytes")
+            return gcode_text
+
+        except ftplib.all_errors as e:
+            logger.error(f"FTP error fetching G-code: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching G-code: {e}")
+            return None

@@ -76,17 +76,6 @@ bridge:
   # Timeout for P1S to acknowledge pause/resume commands (seconds)
   bambu_command_timeout: 30
 
-# G-code processor settings (for pre-processing Orca Slicer output)
-gcode_processor:
-  # Input directory for raw G-code files from Orca Slicer
-  input_dir: "./gcode/input"
-  # Output directory for processed G-code ready for P1S
-  output_dir: "./gcode/output"
-  # Command to inject at tool-change points: "m600" or "pause"
-  inject_command: "m600"
-  # Strip original Tx tool-change commands (P1S doesn't have MMU)
-  strip_toolchange: true
-
 # Logging
 logging:
   level: "INFO"  # DEBUG, INFO, WARNING, ERROR

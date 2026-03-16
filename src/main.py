@@ -2,10 +2,10 @@
 Main entry point & CLI for the TradRack-to-Bambu Bridge.
 
 Commands:
-  bridge   - Run the real-time bridge (monitor P1S + handle tool changes)
-  process  - Pre-process G-code files to inject M600/pause commands
-  status   - Check connection to P1S and Happy Hare
-  test     - Test tool change (dry run or real)
+  bridge  - Run the real-time bridge (monitor P1S + handle tool changes)
+  scan    - Scan a G-code file to verify tool-change sequence
+  status  - Check connection to P1S and Happy Hare
+  test    - Test tool change (dry run or real)
 """
 
 import argparse
@@ -21,7 +21,7 @@ import yaml
 
 from .bambu_client import BambuMQTTClient
 from .bridge import Bridge
-from .gcode_processor import GCodeProcessor
+from .gcode_processor import GCodeScanner
 from .happy_hare import HappyHareController
 
 logger = logging.getLogger("tradrack_bridge")
@@ -90,6 +90,7 @@ def create_bambu_client(config: dict) -> BambuMQTTClient:
         access_code=bambu_cfg["access_code"],
         serial=bambu_cfg["serial"],
         port=bambu_cfg.get("mqtt_port", 8883),
+        ftp_port=bambu_cfg.get("ftp_port", 990),
     )
 
 
@@ -115,7 +116,7 @@ def get_filament_map(config: dict) -> dict:
 # ── Commands ────────────────────────────────────────────────────────
 
 def cmd_bridge(args, config: dict):
-    """Run the real-time bridge: monitor P1S, handle tool changes via Happy Hare."""
+    """Run the real-time bridge: monitor P1S, auto-handle tool changes via Happy Hare."""
     bambu = create_bambu_client(config)
     happy_hare = create_happy_hare(config)
     filament_map = get_filament_map(config)
@@ -130,16 +131,6 @@ def cmd_bridge(args, config: dict):
         resume_delay=bridge_cfg.get("resume_delay", 3.0),
         bambu_command_timeout=bridge_cfg.get("bambu_command_timeout", 30),
     )
-
-    # If G-code file provided, extract tool sequence
-    if args.gcode:
-        processor = GCodeProcessor(filament_map=filament_map)
-        sequence = processor.get_tool_sequence(args.gcode)
-        if sequence:
-            bridge.set_tool_sequence(sequence)
-            logger.info(f"Loaded tool sequence from G-code: {sequence}")
-        else:
-            logger.warning("No tool changes found in G-code file")
 
     # Connect to P1S
     print(f"Connecting to P1S at {config['bambu']['host']}...")
@@ -159,10 +150,11 @@ def cmd_bridge(args, config: dict):
     print(f"Happy Hare ready! Current tool: T{mmu_status.current_tool}, "
           f"Filament loaded: {mmu_status.filament_loaded}")
 
-    # Start bridge
+    # Start bridge — it will auto-fetch G-code from P1S when a print starts
     bridge.start()
     print("\n=== Bridge is running ===")
-    print("Monitoring P1S for filament change events...")
+    print("Waiting for print to start on P1S...")
+    print("G-code will be auto-fetched from the printer to determine tool sequence.")
     print("Press Ctrl+C to stop\n")
 
     # Handle graceful shutdown
@@ -185,38 +177,18 @@ def cmd_bridge(args, config: dict):
         signal_handler(None, None)
 
 
-def cmd_process(args, config: dict):
-    """Pre-process G-code files to inject M600/pause at tool changes."""
-    gcode_cfg = config.get("gcode_processor", {})
+def cmd_scan(args, config: dict):
+    """Scan a G-code file to verify tool-change sequence (for debugging)."""
     filament_map = get_filament_map(config)
+    scanner = GCodeScanner(filament_map=filament_map)
 
-    processor = GCodeProcessor(
-        inject_command=gcode_cfg.get("inject_command", "m600"),
-        strip_toolchange=gcode_cfg.get("strip_toolchange", True),
-        filament_map=filament_map,
-    )
+    print(f"Scanning: {args.file}\n")
+    events = scanner.scan_file(args.file)
+    scanner.print_summary(events)
 
-    if args.file:
-        # Process single file
-        output = args.output or None
-        result = processor.process_file(args.file, output)
-        processor.print_summary(result)
-    elif args.directory:
-        # Process all files in directory
-        input_dir = args.directory
-        output_dir = args.output or gcode_cfg.get("output_dir", "./gcode/output")
-        results = processor.process_directory(input_dir, output_dir)
-        for result in results:
-            processor.print_summary(result)
-        print(f"\nProcessed {len(results)} file(s)")
-    else:
-        # Use configured directories
-        input_dir = gcode_cfg.get("input_dir", "./gcode/input")
-        output_dir = gcode_cfg.get("output_dir", "./gcode/output")
-        results = processor.process_directory(input_dir, output_dir)
-        for result in results:
-            processor.print_summary(result)
-        print(f"\nProcessed {len(results)} file(s) from {input_dir}")
+    if not events:
+        print("No tool changes found! Make sure Orca Slicer is configured")
+        print("with TRADRACK_TOOL_CHANGE comments. See docs/orca_slicer_setup.md")
 
 
 def cmd_status(args, config: dict):
@@ -292,17 +264,11 @@ def main():
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # bridge command
-    bridge_parser = subparsers.add_parser("bridge", help="Run the real-time bridge")
-    bridge_parser.add_argument(
-        "-g", "--gcode",
-        help="G-code file to extract tool sequence from (optional)",
-    )
+    subparsers.add_parser("bridge", help="Run the real-time bridge (auto-fetches G-code from P1S)")
 
-    # process command
-    process_parser = subparsers.add_parser("process", help="Pre-process G-code files")
-    process_parser.add_argument("-f", "--file", help="Single G-code file to process")
-    process_parser.add_argument("-d", "--directory", help="Directory of G-code files to process")
-    process_parser.add_argument("-o", "--output", help="Output file or directory")
+    # scan command
+    scan_parser = subparsers.add_parser("scan", help="Scan a G-code file to verify tool-change sequence")
+    scan_parser.add_argument("file", help="G-code file to scan")
 
     # status command
     subparsers.add_parser("status", help="Check P1S and Happy Hare connectivity")
@@ -324,7 +290,7 @@ def main():
     # Dispatch command
     commands = {
         "bridge": cmd_bridge,
-        "process": cmd_process,
+        "scan": cmd_scan,
         "status": cmd_status,
         "test": cmd_test,
     }

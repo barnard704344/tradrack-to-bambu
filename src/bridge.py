@@ -3,12 +3,14 @@ Bridge Coordinator — the core orchestration logic.
 
 Ties together the Bambu MQTT client and Happy Hare controller to:
 1. Monitor the P1S print in real-time via MQTT
-2. Detect M600/pause events (filament change requests)
-3. Trigger Happy Hare tool changes on the TradRack
-4. Resume the P1S print after successful filament swap
+2. Auto-fetch G-code from P1S via FTPS when a print starts
+3. Scan the G-code for tool-change sequence (TRADRACK_TOOL_CHANGE comments)
+4. Detect M600/pause events (filament change requests)
+5. Trigger Happy Hare tool changes on the TradRack
+6. Resume the P1S print after successful filament swap
 
-The bridge tracks a tool-change sequence (extracted from G-code pre-processing)
-so it knows which tool to load next when M600 is triggered.
+Orca Slicer is configured to insert M600 + TRADRACK_TOOL_CHANGE comments
+at each tool change, so no manual G-code processing is needed.
 """
 
 import logging
@@ -18,6 +20,7 @@ from enum import Enum
 from typing import Optional
 
 from .bambu_client import BambuMQTTClient, PrintStatus
+from .gcode_processor import GCodeScanner
 from .happy_hare import HappyHareController, MMUState
 
 logger = logging.getLogger(__name__)
@@ -65,6 +68,8 @@ class Bridge:
         self._stop_event = threading.Event()
         self._monitor_thread: Optional[threading.Thread] = None
         self._state_lock = threading.Lock()
+        self._scanner = GCodeScanner(filament_map=filament_map)
+        self._sequence_loaded = False
 
         # Stats
         self._tool_changes_completed = 0
@@ -77,13 +82,17 @@ class Bridge:
 
     def set_tool_sequence(self, sequence: list[int]):
         """
-        Set the expected tool change sequence from G-code processing.
+        Set the expected tool change sequence.
+
+        Normally auto-loaded from the P1S G-code via FTP, but can also
+        be set manually for testing.
 
         Args:
             sequence: Ordered list of tool numbers, e.g. [0, 1, 0, 2, 0]
         """
         self._tool_sequence = sequence
         self._tool_index = 0
+        self._sequence_loaded = True
         logger.info(f"Tool sequence set: {sequence} ({len(sequence)} changes)")
 
     def start(self):
@@ -100,6 +109,10 @@ class Bridge:
             logger.error("Cannot start bridge: Happy Hare/Moonraker not reachable")
             return
 
+        # Auto-fetch and scan G-code from P1S if no sequence loaded yet
+        if not self._sequence_loaded:
+            self._auto_load_sequence()
+
         logger.info("Starting bridge coordinator")
         self._stop_event.clear()
         self._set_state(BridgeState.MONITORING)
@@ -114,7 +127,7 @@ class Bridge:
             self.bambu.on_m600(self._handle_filament_change)
             self.bambu.on_pause(self._handle_filament_change)
 
-        self.bambu.on_state_change(self._log_state_change)
+        self.bambu.on_state_change(self._on_state_change)
 
         # Start monitoring thread
         self._monitor_thread = threading.Thread(
@@ -233,8 +246,15 @@ class Bridge:
                 if self.bambu.is_connected():
                     self.bambu.push_status_request()
 
-                # Check print completion
+                # Auto-fetch G-code if a print started and we don't have a sequence
                 bambu_state = self.bambu.state
+                if (bambu_state.status == PrintStatus.RUNNING
+                        and not self._sequence_loaded
+                        and bambu_state.gcode_file):
+                    logger.info("Print detected, auto-fetching G-code for tool sequence...")
+                    self._auto_load_sequence()
+
+                # Check print completion
                 if bambu_state.status == PrintStatus.FINISH:
                     logger.info("Print finished!")
                     self._print_final_stats()
@@ -250,8 +270,24 @@ class Bridge:
 
             self._stop_event.wait(timeout=5.0)
 
-    def _log_state_change(self, state):
-        """Log P1S state changes for diagnostics."""
+    def _auto_load_sequence(self):
+        """Fetch G-code from P1S via FTP and scan for tool-change sequence."""
+        gcode_text = self.bambu.fetch_gcode()
+        if gcode_text is None:
+            logger.warning("Could not fetch G-code from P1S. "
+                          "Tool sequence must be set manually or will be empty.")
+            return
+
+        sequence = self._scanner.get_tool_sequence_from_text(gcode_text)
+        if sequence:
+            self.set_tool_sequence(sequence)
+            self._sequence_loaded = True
+            logger.info(f"Auto-loaded tool sequence from P1S: {sequence}")
+        else:
+            logger.warning("No tool changes found in fetched G-code")
+
+    def _on_state_change(self, state):
+        """Handle P1S state changes — auto-fetch on print start + diagnostics."""
         logger.debug(
             f"P1S: {state.status.value} | "
             f"{state.mc_percent}% | layer {state.layer_num}/{state.total_layers} | "

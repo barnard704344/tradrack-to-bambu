@@ -1,18 +1,18 @@
 """
-G-code Processor for TradRack-to-Bambu Bridge.
+G-code Scanner for TradRack-to-Bambu Bridge.
 
-Pre-processes G-code files from Orca Slicer to:
-1. Detect tool change commands (T0, T1, ... T7)
-2. Replace/inject M600 (filament change) or M601 (pause) commands
-3. Strip original tool-change commands (P1S has no MMU)
-4. Generate a tool-change sequence map for the bridge to follow
+Scans G-code (produced by Orca Slicer with TradRack custom tool-change G-code)
+to extract the ordered tool-change sequence the bridge needs to follow.
 
-This lets the P1S pause at each filament change point so the bridge
-can trigger Happy Hare to swap filament on the TradRack.
+Orca Slicer is configured to emit these comments at tool changes:
+    ; TRADRACK_TOOL_CHANGE T=<n>
+    M600
+
+This module scans for those markers (and also plain Tx commands as fallback)
+to build the list of tool numbers in order.
 """
 
 import logging
-import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,212 +20,174 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Regex: match standalone tool change commands T0-T99
-# Must be on its own line (possibly with comments after)
-TOOL_CHANGE_RE = re.compile(r"^\s*(T(\d+))\s*(;.*)?$", re.MULTILINE)
+# Orca Slicer custom comment: ; TRADRACK_TOOL_CHANGE T=2
+TRADRACK_COMMENT_RE = re.compile(
+    r";\s*TRADRACK_TOOL_CHANGE\s+T\s*=\s*(\d+)", re.IGNORECASE
+)
+
+# Orca Slicer initial tool: ; TRADRACK_INITIAL_TOOL T=0
+TRADRACK_INITIAL_RE = re.compile(
+    r";\s*TRADRACK_INITIAL_TOOL\s+T\s*=\s*(\d+)", re.IGNORECASE
+)
+
+# Fallback: standalone tool change commands T0-T99
+TOOL_CHANGE_RE = re.compile(r"^\s*T(\d+)\s*(;.*)?$")
+
+# Layer tracking (Orca Slicer format)
+LAYER_RE = re.compile(r";\s*(?:CHANGE_LAYER|LAYER_CHANGE|LAYER)\s*[=:]?\s*(\d+)")
 
 
 @dataclass
 class ToolChangeEvent:
     """A tool change detected in the G-code."""
     line_number: int
-    original_line: str
     tool_number: int
     layer: Optional[int] = None
+    is_initial: bool = False
 
 
-@dataclass
-class ProcessingResult:
-    """Result of G-code processing."""
-    input_file: str
-    output_file: str
-    tool_changes: list  # list of ToolChangeEvent
-    total_lines: int
-    lines_modified: int
-
-
-class GCodeProcessor:
+class GCodeScanner:
     """
-    Processes G-code to inject filament change commands at tool-change points.
+    Scans G-code to extract the tool-change sequence for the bridge.
 
-    Usage:
-        processor = GCodeProcessor(inject_command="m600", strip_toolchange=True)
-        result = processor.process_file("input.gcode", "output.gcode")
-        # result.tool_changes contains the ordered sequence of tool changes
+    Works with G-code produced by Orca Slicer configured per docs/orca_slicer_setup.md.
+    Can scan from a file path or from raw G-code text (fetched from P1S via FTP).
     """
 
-    def __init__(self, inject_command: str = "m600",
-                 strip_toolchange: bool = True,
-                 filament_map: Optional[dict] = None):
-        """
-        Args:
-            inject_command: "m600" for M600 filament change, "pause" for M601 pause
-            strip_toolchange: Whether to remove original Tx commands
-            filament_map: Optional dict mapping "T0" -> gate_number
-        """
-        self.inject_command = inject_command.lower()
-        self.strip_toolchange = strip_toolchange
+    def __init__(self, filament_map: Optional[dict] = None):
         self.filament_map = filament_map or {}
 
-        if self.inject_command == "m600":
-            self._inject_gcode = "M600 ; Filament change - TradRack bridge"
-        elif self.inject_command == "pause":
-            self._inject_gcode = "M601 ; Pause for filament change - TradRack bridge"
-        else:
-            raise ValueError(f"Unknown inject_command: {inject_command}. Use 'm600' or 'pause'")
+    def scan_file(self, gcode_path: str) -> list[ToolChangeEvent]:
+        """Scan a G-code file and return all tool change events in order."""
+        path = Path(gcode_path)
+        if not path.exists():
+            raise FileNotFoundError(f"G-code file not found: {path}")
 
-    def process_file(self, input_path: str, output_path: str = None) -> ProcessingResult:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            return self._scan_lines(f)
+
+    def scan_text(self, gcode_text: str) -> list[ToolChangeEvent]:
+        """Scan raw G-code text and return all tool change events in order."""
+        return self._scan_lines(gcode_text.splitlines(keepends=True))
+
+    def get_tool_sequence(self, gcode_path: str) -> list[int]:
         """
-        Process a G-code file: detect tool changes, inject M600/pause, optionally strip Tx.
+        Get the ordered tool number sequence from a G-code file.
 
-        Args:
-            input_path: Path to input G-code file
-            output_path: Path for processed output (default: auto-generate)
-
-        Returns:
-            ProcessingResult with tool change sequence and statistics
+        Returns: e.g. [0, 1, 0, 2, 0]
         """
-        input_path = Path(input_path)
-        if not input_path.exists():
-            raise FileNotFoundError(f"G-code file not found: {input_path}")
+        events = self.scan_file(gcode_path)
+        return [e.tool_number for e in events]
 
-        if output_path is None:
-            output_path = input_path.parent / f"{input_path.stem}_processed{input_path.suffix}"
-        output_path = Path(output_path)
+    def get_tool_sequence_from_text(self, gcode_text: str) -> list[int]:
+        """
+        Get the ordered tool number sequence from raw G-code text.
 
-        logger.info(f"Processing G-code: {input_path}")
+        Returns: e.g. [0, 1, 0, 2, 0]
+        """
+        events = self.scan_text(gcode_text)
+        return [e.tool_number for e in events]
 
-        with open(input_path, "r", encoding="utf-8", errors="replace") as f:
-            lines = f.readlines()
+    def get_gate_sequence(self, gcode_path: str) -> list[int]:
+        """
+        Get the ordered gate sequence (after filament_map remapping).
 
-        tool_changes = []
-        output_lines = []
+        Returns: e.g. [0, 1, 0, 2, 0] (gate numbers, not tool numbers)
+        """
+        tools = self.get_tool_sequence(gcode_path)
+        return [self.filament_map.get(f"T{t}", t) for t in tools]
+
+    def get_gate_sequence_from_text(self, gcode_text: str) -> list[int]:
+        """Get ordered gate sequence from raw G-code text."""
+        tools = self.get_tool_sequence_from_text(gcode_text)
+        return [self.filament_map.get(f"T{t}", t) for t in tools]
+
+    def _scan_lines(self, lines) -> list[ToolChangeEvent]:
+        """Core scanning logic — works on any iterable of lines."""
+        events = []
         current_layer = None
-        lines_modified = 0
+        # Track whether we've seen TRADRACK comments — if so, ignore plain Tx
+        has_tradrack_comments = False
 
-        for i, line in enumerate(lines):
-            # Track layer changes (Orca Slicer comment format)
-            layer_match = re.match(r";\s*(?:CHANGE_LAYER|LAYER_CHANGE|LAYER)\s*[=:]?\s*(\d+)", line.strip())
+        # First pass: check if TRADRACK comments exist
+        all_lines = list(lines)
+        for line in all_lines:
+            if TRADRACK_COMMENT_RE.search(line) or TRADRACK_INITIAL_RE.search(line):
+                has_tradrack_comments = True
+                break
+
+        # Second pass: extract events
+        for i, line in enumerate(all_lines):
+            stripped = line.strip() if isinstance(line, str) else line
+
+            # Track layers
+            layer_match = LAYER_RE.match(stripped)
             if layer_match:
                 current_layer = int(layer_match.group(1))
 
-            # Check for tool change command
-            tc_match = TOOL_CHANGE_RE.match(line)
-            if tc_match:
-                tool_cmd = tc_match.group(1)  # e.g. "T1"
-                tool_num = int(tc_match.group(2))
-
-                event = ToolChangeEvent(
+            # Check for TRADRACK_INITIAL_TOOL comment
+            init_match = TRADRACK_INITIAL_RE.search(stripped)
+            if init_match:
+                events.append(ToolChangeEvent(
                     line_number=i + 1,
-                    original_line=line.strip(),
-                    tool_number=tool_num,
+                    tool_number=int(init_match.group(1)),
                     layer=current_layer,
-                )
-                tool_changes.append(event)
-
-                gate = self.filament_map.get(f"T{tool_num}", tool_num)
-                logger.debug(f"Line {i + 1}: {tool_cmd} -> gate {gate} (layer {current_layer})")
-
-                # Inject the pause/M600 command
-                comment = f"; === Tool change: T{tool_num} -> gate {gate} ==="
-                output_lines.append(comment + "\n")
-                output_lines.append(self._inject_gcode + "\n")
-                lines_modified += 1
-
-                if not self.strip_toolchange:
-                    # Keep the original Tx command (commented out for reference)
-                    output_lines.append(f"; {line.strip()} ; (original, kept for ref)\n")
-                else:
-                    # Strip it — add a comment showing what was removed
-                    output_lines.append(f"; {line.strip()} ; (stripped by TradRack bridge)\n")
-                    lines_modified += 1
-
+                    is_initial=True,
+                ))
                 continue
 
-            output_lines.append(line)
+            # Check for TRADRACK_TOOL_CHANGE comment
+            tc_match = TRADRACK_COMMENT_RE.search(stripped)
+            if tc_match:
+                events.append(ToolChangeEvent(
+                    line_number=i + 1,
+                    tool_number=int(tc_match.group(1)),
+                    layer=current_layer,
+                ))
+                continue
 
-        # Write processed file
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_path, "w", encoding="utf-8") as f:
-            f.writelines(output_lines)
-
-        result = ProcessingResult(
-            input_file=str(input_path),
-            output_file=str(output_path),
-            tool_changes=tool_changes,
-            total_lines=len(lines),
-            lines_modified=lines_modified,
-        )
+            # Fallback: plain Tx commands (only if no TRADRACK comments found)
+            if not has_tradrack_comments:
+                plain_match = TOOL_CHANGE_RE.match(stripped)
+                if plain_match:
+                    events.append(ToolChangeEvent(
+                        line_number=i + 1,
+                        tool_number=int(plain_match.group(1)),
+                        layer=current_layer,
+                    ))
 
         logger.info(
-            f"Processed {result.total_lines} lines, "
-            f"found {len(tool_changes)} tool changes, "
-            f"modified {lines_modified} lines"
+            f"Scanned G-code: found {len(events)} tool changes "
+            f"(tradrack_comments={'yes' if has_tradrack_comments else 'no/fallback'})"
         )
-        logger.info(f"Output written to: {output_path}")
+        if events:
+            seq = [e.tool_number for e in events]
+            logger.info(f"Tool sequence: {seq}")
 
-        return result
+        return events
 
-    def get_tool_sequence(self, input_path: str) -> list[int]:
-        """
-        Scan a G-code file and return the ordered sequence of tool numbers used.
+    def print_summary(self, events: list[ToolChangeEvent]):
+        """Print a human-readable summary of the tool-change sequence."""
+        print(f"\n{'=' * 50}")
+        print(f"G-code Tool Change Sequence")
+        print(f"{'=' * 50}")
+        print(f"Total tool changes: {len(events)}")
 
-        Returns list of tool numbers in order of appearance, e.g. [0, 1, 0, 2, 0]
-        """
-        input_path = Path(input_path)
-        if not input_path.exists():
-            raise FileNotFoundError(f"G-code file not found: {input_path}")
+        if events:
+            initial = [e for e in events if e.is_initial]
+            changes = [e for e in events if not e.is_initial]
 
-        sequence = []
-        with open(input_path, "r", encoding="utf-8", errors="replace") as f:
-            for line in f:
-                tc_match = TOOL_CHANGE_RE.match(line)
-                if tc_match:
-                    tool_num = int(tc_match.group(2))
-                    sequence.append(tool_num)
+            if initial:
+                e = initial[0]
+                gate = self.filament_map.get(f"T{e.tool_number}", e.tool_number)
+                print(f"Initial tool: T{e.tool_number} -> gate {gate}")
 
-        logger.info(f"Tool sequence ({len(sequence)} changes): {sequence}")
-        return sequence
-
-    def process_directory(self, input_dir: str, output_dir: str) -> list[ProcessingResult]:
-        """Process all .gcode and .3mf G-code files in a directory."""
-        input_dir = Path(input_dir)
-        output_dir = Path(output_dir)
-
-        if not input_dir.exists():
-            logger.warning(f"Input directory does not exist: {input_dir}")
-            return []
-
-        results = []
-        for gcode_file in sorted(input_dir.glob("*.gcode")):
-            output_file = output_dir / gcode_file.name
-            try:
-                result = self.process_file(str(gcode_file), str(output_file))
-                results.append(result)
-            except Exception as e:
-                logger.error(f"Failed to process {gcode_file}: {e}")
-
-        return results
-
-    def print_summary(self, result: ProcessingResult):
-        """Print a human-readable summary of processing results."""
-        print(f"\n{'=' * 60}")
-        print(f"G-code Processing Summary")
-        print(f"{'=' * 60}")
-        print(f"Input:  {result.input_file}")
-        print(f"Output: {result.output_file}")
-        print(f"Total lines: {result.total_lines}")
-        print(f"Lines modified: {result.lines_modified}")
-        print(f"Tool changes found: {len(result.tool_changes)}")
-        print()
-
-        if result.tool_changes:
-            print(f"Tool Change Sequence:")
+            print(f"\nTool changes ({len(changes)}):")
             print(f"{'-' * 40}")
-            for i, tc in enumerate(result.tool_changes, 1):
-                gate = self.filament_map.get(f"T{tc.tool_number}", tc.tool_number)
-                layer_str = f"layer {tc.layer}" if tc.layer is not None else "unknown layer"
-                print(f"  {i:3d}. T{tc.tool_number} -> gate {gate}  "
-                      f"(line {tc.line_number}, {layer_str})")
+            for i, e in enumerate(changes, 1):
+                gate = self.filament_map.get(f"T{e.tool_number}", e.tool_number)
+                layer_str = f"layer {e.layer}" if e.layer is not None else "?"
+                print(f"  {i:3d}. T{e.tool_number} -> gate {gate}  "
+                      f"(line {e.line_number}, {layer_str})")
 
-        print(f"{'=' * 60}\n")
+        print(f"{'=' * 50}\n")

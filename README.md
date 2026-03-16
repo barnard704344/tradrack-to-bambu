@@ -19,14 +19,16 @@ This project bridges the gap between Bambu's proprietary firmware and the open-s
 ```
 
 **Print workflow:**
-1. Slice multi-color model in Orca Slicer
-2. Run G-code through the bridge processor to inject M600 at tool changes
-3. Upload processed G-code to P1S and start print
-4. Bridge monitors P1S via MQTT — when M600 triggers a pause:
+1. Configure Orca Slicer with custom tool-change G-code (see [docs/orca_slicer_setup.md](docs/orca_slicer_setup.md))
+2. Slice multi-color model in Orca Slicer and send directly to P1S
+3. Start the bridge on the Pi — it connects to the P1S via MQTT
+4. When the print starts, the bridge auto-fetches the G-code from the P1S via FTPS
+5. Bridge scans the G-code for the tool-change sequence
+6. When P1S hits M600 and pauses:
    - Bridge tells Happy Hare to change filament on TradRack
    - Happy Hare unloads old filament, moves selector, loads new filament
    - Bridge resumes the P1S print
-5. Repeat for each filament change until print completes
+7. Repeat for each filament change until print completes
 
 ## Hardware
 
@@ -42,18 +44,19 @@ This project bridges the gap between Bambu's proprietary firmware and the open-s
 ```
 tradrack-to-bambu/
 ├── config/
-│   └── config.yaml          # Bridge configuration
+│   └── config.yaml           # Bridge configuration
 ├── src/
-│   ├── main.py              # CLI entry point
-│   ├── bambu_client.py      # P1S MQTT client (LAN mode)
-│   ├── happy_hare.py        # Happy Hare controller (Moonraker API)
-│   ├── gcode_processor.py   # G-code tool-change processor
-│   └── bridge.py            # Orchestration coordinator
+│   ├── main.py               # CLI entry point
+│   ├── bambu_client.py       # P1S MQTT + FTPS client (LAN mode)
+│   ├── happy_hare.py         # Happy Hare controller (Moonraker API)
+│   ├── gcode_processor.py    # G-code scanner (extracts tool sequence)
+│   └── bridge.py             # Orchestration coordinator
 ├── klipper/
-│   ├── printer.cfg           # Minimal Klipper config (TradRack-only)
+│   ├── printer.cfg            # Minimal Klipper config (TradRack-only)
 │   └── fly-ecrf-v2-tradrack.cfg  # ECRF-V2 pin reference for Happy Hare
 ├── docs/
-│   └── setup_guide.md       # Full hardware/software setup guide
+│   ├── setup_guide.md        # Full hardware/software setup guide
+│   └── orca_slicer_setup.md  # Orca Slicer configuration guide
 └── requirements.txt
 ```
 
@@ -92,7 +95,13 @@ nano config/config.yaml
 
 Set your P1S IP address, LAN access code, and serial number in `config/config.yaml`.
 
-### 3. Check Connectivity
+### 3. Configure Orca Slicer
+
+Follow [docs/orca_slicer_setup.md](docs/orca_slicer_setup.md) to set up Orca Slicer's
+custom tool-change G-code. This makes Orca Slicer insert `M600` + `TRADRACK_TOOL_CHANGE`
+comments at every filament swap automatically.
+
+### 4. Check Connectivity
 
 ```bash
 python -m src.main status
@@ -100,23 +109,15 @@ python -m src.main status
 
 This verifies the bridge can reach both the P1S (MQTT) and Happy Hare (Moonraker).
 
-### 4. Process G-code
-
-```bash
-# Process a single file — injects M600 at every tool change
-python -m src.main process -f my_multicolor_print.gcode -o ready_to_print.gcode
-```
-
-Upload the processed G-code to the P1S (via Orca Slicer, SD card, or FTP).
-
 ### 5. Run the Bridge
 
 ```bash
-# Start monitoring — pass the original G-code so it knows the tool sequence
-python -m src.main bridge -g my_multicolor_print.gcode
+python -m src.main bridge
 ```
 
-Start the print on the P1S. The bridge handles the rest.
+Then slice your multi-color model in Orca Slicer and send it to the P1S.
+The bridge auto-detects the print, fetches the G-code, and handles every
+filament change automatically.
 
 ### 6. Test a Tool Change
 
@@ -129,9 +130,8 @@ python -m src.main test 0
 
 | Command | Description |
 |---------|-------------|
-| `bridge [-g gcode]` | Run real-time bridge (monitor P1S + handle tool changes) |
-| `process -f file [-o output]` | Process G-code to inject M600 at tool changes |
-| `process -d dir [-o outdir]` | Process all G-code files in a directory |
+| `bridge` | Run real-time bridge (auto-fetches G-code, monitors P1S, handles tool changes) |
+| `scan <file>` | Scan a G-code file to verify tool-change sequence |
 | `status` | Check connectivity to P1S and Happy Hare |
 | `test <tool>` | Test a tool change via Happy Hare (0-7) |
 
