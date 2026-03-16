@@ -22,28 +22,21 @@
                                     └────────┬────────────┘
                                              │ 24V
                               ┌──────────────┼──────────────┐
-                              │              │              │
-                              ▼              ▼              │
-                     ┌────────────┐  ┌──────────────┐      │
-                     │ 5V Step-   │  │ Fly-ECRF-V2  │      │
-                     │ Down Conv. │  │              │      │
-                     └──────┬─────┘  │ XT30 input   │      │
-                            │ 5V     │ (via custom   │      │
-                            ▼        │  XT60→XT30)  │      │
-                     ┌────────────┐  └──────┬───────┘      │
-                     │ Raspberry  │         │ USB          │
-                     │ Pi 4       │◄────────┘              │
-                     │            │                        │
-                     │  5" Screen │                        │
-                     └────────────┘                        │
-                                                           │
-                                              ┌────────────┘
-                                              │ 24V
-                                              ▼
-                                     ┌────────────────┐
-                                     │   TradRack     │
-                                     │   Motors/Servo │
-                                     └────────────────┘
+                              │              │
+                              ▼              ▼
+                     ┌────────────┐  ┌──────────────────┐
+                     │ 5V Step-   │  │ Fly-ECRF-V2      │
+                     │ Down Conv. │  │ XT30 power input  │
+                     └──────┬─────┘  │ (via custom       │
+                            │ 5V     │  XT60→XT30 cable) │
+                            ▼        │                  │
+                     ┌────────────┐  │  Selector motor  │──► TradRack
+                     │ Raspberry  │  │  Gear motor      │──► TradRack
+                     │ Pi 4       │  │  Servo           │──► TradRack
+                     │            │  └────────┬─────────┘
+                     │  5" Screen │           │ USB
+                     │            │◄──────────┘
+                     └────────────┘
 ```
 
 ## Power
@@ -55,7 +48,7 @@
 ### MeanWell 24V 3.5A PSU
 - Input: Mains AC (110/220V)
 - Output: 24V DC, 3.5A (84W)
-- Powers: Fly-ECRF-V2, TradRack motors, 5V step-down converter
+- Powers: Fly-ECRF-V2 (which in turn powers TradRack motors/servo), 5V step-down converter
 
 ### 5V Step-Down Converter
 - Input: 24V from PSU
