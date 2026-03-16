@@ -33,8 +33,16 @@ TRADRACK_INITIAL_RE = re.compile(
 # Fallback: standalone tool change commands T0-T99
 TOOL_CHANGE_RE = re.compile(r"^\s*T(\d+)\s*(;.*)?$")
 
-# Layer tracking (Orca Slicer format)
-LAYER_RE = re.compile(r";\s*(?:CHANGE_LAYER|LAYER_CHANGE|LAYER)\s*[=:]?\s*(\d+)")
+# Layer tracking (Orca Slicer format: ;BEFORE_LAYER_CHANGE / ;AFTER_LAYER_CHANGE)
+# Also matches ;LAYER_CHANGE and ;LAYER for broader compatibility
+LAYER_RE = re.compile(r";\s*(?:BEFORE_LAYER_CHANGE|AFTER_LAYER_CHANGE|CHANGE_LAYER|LAYER_CHANGE|LAYER)\s*[=:]?\s*(\d+)?")
+
+# P1S layer tracking: M73 L<n> (layer progress) and M991 S0 P<n> (layer notification)
+M73_LAYER_RE = re.compile(r"^\s*M73\s+L(\d+)")
+M991_LAYER_RE = re.compile(r"^\s*M991\s+S0\s+P(\d+)")
+
+# Orca Slicer layer Z comment: ;[layer_z] e.g. ;0.2
+LAYER_Z_RE = re.compile(r";\s*(\d+\.?\d*)\s*$")
 
 
 @dataclass
@@ -120,10 +128,30 @@ class GCodeScanner:
         for i, line in enumerate(all_lines):
             stripped = line.strip() if isinstance(line, str) else line
 
-            # Track layers
+            # Track layers via multiple methods:
+            # 1. ;BEFORE_LAYER_CHANGE comments (Orca Slicer / Klipper style)
             layer_match = LAYER_RE.match(stripped)
-            if layer_match:
+            if layer_match and layer_match.group(1):
                 current_layer = int(layer_match.group(1))
+                continue
+            if stripped.startswith(";BEFORE_LAYER_CHANGE"):
+                if current_layer is None:
+                    current_layer = 0
+                else:
+                    current_layer += 1
+                continue
+
+            # 2. M73 L<n> layer progress (P1S G-code format)
+            m73_match = M73_LAYER_RE.match(stripped)
+            if m73_match:
+                current_layer = int(m73_match.group(1))
+                continue
+
+            # 3. M991 S0 P<n> layer notification (P1S G-code format)
+            m991_match = M991_LAYER_RE.match(stripped)
+            if m991_match:
+                current_layer = int(m991_match.group(1))
+                continue
 
             # Check for TRADRACK_INITIAL_TOOL comment
             init_match = TRADRACK_INITIAL_RE.search(stripped)
