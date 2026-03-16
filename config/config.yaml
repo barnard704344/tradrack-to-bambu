@@ -1,0 +1,95 @@
+# ============================================================
+# TradRack-to-Bambu Bridge Configuration
+# ============================================================
+# This bridge connects a BambuLab P1S (LAN mode) to a TradRack MMU
+# controlled by Klipper + Happy Hare on a Raspberry Pi 4 with Fly-ECRF-V2.
+
+# BambuLab P1S LAN Mode Settings
+bambu:
+  # Printer IP address on your local network
+  host: "192.168.1.100"
+  # Access code from printer LCD: Settings -> LAN Mode
+  access_code: "your_access_code"
+  # Serial number from printer LCD: Settings -> Device Info
+  serial: "your_serial_number"
+  # MQTT port (default 8883 for TLS)
+  mqtt_port: 8883
+  # FTP port for G-code upload (FTPS)
+  ftp_port: 990
+
+# Moonraker API settings (runs on the same Pi as Klipper)
+moonraker:
+  host: "http://127.0.0.1"
+  port: 7125
+  # API key if authentication is enabled in moonraker.conf
+  api_key: ""
+
+# Happy Hare MMU settings (controls TradRack via Klipper)
+happy_hare:
+  # Number of gates (filament slots) on TradRack
+  num_gates: 8
+  # Timeout for a full tool change operation (seconds)
+  tool_change_timeout: 120
+  # Retry count on failed tool changes before raising error
+  retry_count: 2
+
+# Filament mapping: slicer tool number -> TradRack gate index
+# Bambu Slicer uses T0-T7 for filaments. Map them to Happy Hare gates.
+# Remap here if your physical spool order differs from slicer order.
+filament_map:
+  T0: 0
+  T1: 1
+  T2: 2
+  T3: 3
+  T4: 4
+  T5: 5
+  T6: 6
+  T7: 7
+
+# Optional: filament info per gate (for logging & display)
+filaments:
+  0: { material: "PLA", color: "red" }
+  1: { material: "PLA", color: "blue" }
+  2: { material: "PLA", color: "green" }
+  3: { material: "PLA", color: "white" }
+  4: { material: "PLA", color: "black" }
+  5: { material: "PLA", color: "yellow" }
+  6: { material: "PLA", color: "orange" }
+  7: { material: "PLA", color: "purple" }
+
+# Bridge behavior
+bridge:
+  # How to detect filament changes from the P1S print stream
+  #   "m600"  - Watch for M600 filament change command
+  #   "pause" - Watch for print pause state (M601 or LCD pause)
+  trigger_mode: "m600"
+
+  # MQTT status polling interval (seconds)
+  poll_interval: 1.0
+
+  # Automatically resume print after successful tool change
+  auto_resume: true
+
+  # Seconds to wait after Happy Hare tool change before resuming print
+  resume_delay: 3.0
+
+  # Timeout for P1S to acknowledge pause/resume commands (seconds)
+  bambu_command_timeout: 30
+
+# G-code processor settings (for pre-processing slicer output)
+gcode_processor:
+  # Input directory for raw G-code files from slicer
+  input_dir: "./gcode/input"
+  # Output directory for processed G-code ready for P1S
+  output_dir: "./gcode/output"
+  # Command to inject at tool-change points: "m600" or "pause"
+  inject_command: "m600"
+  # Strip original Tx tool-change commands (P1S doesn't have MMU)
+  strip_toolchange: true
+
+# Logging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  file: "./logs/bridge.log"
+  max_size_mb: 10
+  backup_count: 3
