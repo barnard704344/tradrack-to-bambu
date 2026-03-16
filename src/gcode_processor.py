@@ -1,7 +1,7 @@
 """
 G-code Processor for TradRack-to-Bambu Bridge.
 
-Pre-processes G-code files from the slicer to:
+Pre-processes G-code files from Orca Slicer to:
 1. Detect tool change commands (T0, T1, ... T7)
 2. Replace/inject M600 (filament change) or M601 (pause) commands
 3. Strip original tool-change commands (P1S has no MMU)
@@ -104,8 +104,8 @@ class GCodeProcessor:
         lines_modified = 0
 
         for i, line in enumerate(lines):
-            # Track layer changes (common slicer comment format)
-            layer_match = re.match(r";\s*(?:LAYER|layer_change|Z:)\s*(\d+)", line.strip())
+            # Track layer changes (Orca Slicer comment format)
+            layer_match = re.match(r";\s*(?:CHANGE_LAYER|LAYER_CHANGE|LAYER)\s*[=:]?\s*(\d+)", line.strip())
             if layer_match:
                 current_layer = int(layer_match.group(1))
 

@@ -33,9 +33,9 @@ happy_hare:
   # Retry count on failed tool changes before raising error
   retry_count: 2
 
-# Filament mapping: slicer tool number -> TradRack gate index
-# Bambu Slicer uses T0-T7 for filaments. Map them to Happy Hare gates.
-# Remap here if your physical spool order differs from slicer order.
+# Filament mapping: Orca Slicer tool number -> TradRack gate index
+# Orca Slicer uses T0-T7 for filaments. Map them to Happy Hare gates.
+# Remap here if your physical spool order differs from Orca Slicer order.
 filament_map:
   T0: 0
   T1: 1
@@ -76,9 +76,9 @@ bridge:
   # Timeout for P1S to acknowledge pause/resume commands (seconds)
   bambu_command_timeout: 30
 
-# G-code processor settings (for pre-processing slicer output)
+# G-code processor settings (for pre-processing Orca Slicer output)
 gcode_processor:
-  # Input directory for raw G-code files from slicer
+  # Input directory for raw G-code files from Orca Slicer
   input_dir: "./gcode/input"
   # Output directory for processed G-code ready for P1S
   output_dir: "./gcode/output"

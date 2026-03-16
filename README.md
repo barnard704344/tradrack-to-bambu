@@ -19,7 +19,7 @@ This project bridges the gap between Bambu's proprietary firmware and the open-s
 ```
 
 **Print workflow:**
-1. Slice multi-color model in Bambu Slicer (or any slicer)
+1. Slice multi-color model in Orca Slicer
 2. Run G-code through the bridge processor to inject M600 at tool changes
 3. Upload processed G-code to P1S and start print
 4. Bridge monitors P1S via MQTT — when M600 triggers a pause:
@@ -80,7 +80,7 @@ cd Happy-Hare && ./install.sh  # Select TradRack, 8 gates
 
 ```bash
 # Clone this repo on the Pi
-git clone https://github.com/yourusername/tradrack-to-bambu.git
+git clone https://github.com/barnard704344/tradrack-to-bambu.git
 cd tradrack-to-bambu
 
 # Install Python dependencies
@@ -107,7 +107,7 @@ This verifies the bridge can reach both the P1S (MQTT) and Happy Hare (Moonraker
 python -m src.main process -f my_multicolor_print.gcode -o ready_to_print.gcode
 ```
 
-Upload the processed G-code to the P1S (via Bambu Studio, SD card, or FTP).
+Upload the processed G-code to the P1S (via Orca Slicer, SD card, or FTP).
 
 ### 5. Run the Bridge
 
@@ -146,7 +146,7 @@ See [config/config.yaml](config/config.yaml) for all settings. Key items:
 - **bambu.serial** — Printer serial (from P1S LCD: Settings > Device Info)
 - **happy_hare.num_gates** — Number of TradRack filament slots (1-8)
 - **bridge.trigger_mode** — `"m600"` or `"pause"` detection mode
-- **filament_map** — Maps slicer tool numbers to TradRack gate numbers
+- **filament_map** — Maps Orca Slicer tool numbers to TradRack gate numbers
 
 ## Requirements
 
