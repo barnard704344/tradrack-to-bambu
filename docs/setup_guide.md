@@ -33,6 +33,11 @@ git clone https://github.com/dw-0/kiauh.git
 From the KIAUH menu, install:
 1. **Klipper** (the host software)
 2. **Moonraker** (the API server)
+3. **KlipperScreen** (touchscreen UI for the Pi's 5-inch display)
+
+KlipperScreen provides a touchscreen interface showing Happy Hare MMU
+status, gate selection, filament load/unload controls, and macros.
+It talks directly to Moonraker — no web browser needed.
 
 Do NOT install Mainsail/Fluidd — we don't need a web UI for this
 (though you can install one for debugging if you want).
