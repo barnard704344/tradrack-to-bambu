@@ -1,5 +1,7 @@
 # TradRack-to-Bambu Bridge
 
+> **Work in Progress** — This project is under active development. The hardware has not been tested yet. Use at your own risk and expect breaking changes.
+
 Use a **TradRack MMU** with a **BambuLab P1S** over LAN mode.
 
 This project bridges the gap between Bambu's proprietary firmware and the open-source TradRack filament changer by running **Klipper + Happy Hare** on a Raspberry Pi 4 with a **Fly-ECRF-V2** stepper driver board, and communicating with the P1S over **MQTT** (LAN mode).
