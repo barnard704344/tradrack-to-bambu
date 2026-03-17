@@ -13,6 +13,37 @@
 | 5-inch Touchscreen | Pi-compatible DSI/HDMI | KlipperScreen or status display |
 | TradRack | 8-slot filament changer | Open-source MMU |
 
+## Fly-ECRF-V2 Board
+
+- **MCU**: STM32F072 (48 MHz, internal clock)
+- **Stepper drivers**: 2× TMC2209 (UART mode)
+- **Communication**: USB (on PA11/PA12) — DIP switches must be set to USB mode
+- **Firmware**: Klipper MCU (no bootloader, internal clock reference)
+
+**Wiring and DIP switch documentation:**
+https://mellow.klipper.cn/en/docs/ProductDoc/ToolBoard/fly-ercf/ercfv2/wiring
+
+### Pin Mapping
+
+From the official Fly-ECRF-V2 pinout diagram:
+
+| Function | STM32 Pin | GPIO Number |
+|----------|-----------|-------------|
+| Selector Step | PA4 | gpio4 |
+| Selector Dir | PA3 | gpio3 |
+| Selector Enable | PA5 | gpio5 |
+| Selector UART | PA2 | gpio2 |
+| Selector Diag/Endstop | PB4 | gpio20 |
+| Gear Step | PA7 | gpio7 |
+| Gear Dir | PA8 | gpio8 |
+| Gear Enable | PA6 | gpio6 |
+| Gear UART | PA9 | gpio9 |
+| Gear Diag/Encoder | PA15 | gpio15 |
+| Servo | PB5 | gpio21 |
+| Neopixel | PA14 | gpio14 |
+
+GPIO convention: `gpio0`–`gpio15` = PA0–PA15, `gpio16`–`gpio31` = PB0–PB15.
+
 ## Wiring Overview
 
 ```
@@ -22,19 +53,19 @@
                                     └────────┬────────────┘
                                              │ 24V
                               ┌──────────────┼──────────────┐
-                              │              │
-                              ▼              ▼
-                     ┌────────────┐  ┌──────────────────┐
-                     │ 5V Step-   │  │ Fly-ECRF-V2      │
-                     │ Down Conv. │  │ XT30 power input  │
-                     └──────┬─────┘  │ (via custom       │
-                            │ 5V     │  XT60→XT30 cable) │
-                            ▼        │                  │
+                              │              │              │
+                              ▼              ▼              │
+                     ┌────────────┐  ┌──────────────────┐  │
+                     │ 5V Step-   │  │ Fly-ECRF-V2      │  │
+                     │ Down Conv. │  │ XT30 power input  │  │
+                     └──────┬─────┘  │ (via custom       │  │
+                            │ 5V     │  XT60→XT30 cable) │  │
+                            ▼        │                   │  │
                      ┌────────────┐  │  Selector motor  │──► TradRack
                      │ Raspberry  │  │  Gear motor      │──► TradRack
                      │ Pi 4       │  │  Servo           │──► TradRack
                      │            │  └────────┬─────────┘
-                     │  5" Screen │           │ USB
+                     │  5" Screen │           │ USB-C
                      │            │◄──────────┘
                      └────────────┘
 ```
@@ -63,8 +94,9 @@
 - Use appropriate gauge wire for 3.5A (20AWG minimum recommended)
 
 ### USB: Pi → Fly-ECRF-V2
-- USB-A (Pi) to USB-C/Micro (Fly-ECRF-V2)
+- USB-A (Pi) to USB-C (Fly-ECRF-V2)
 - Provides Klipper MCU serial communication
+- DIP switches on ECRF-V2 must be set to USB mode (see [Mellow wiring docs](https://mellow.klipper.cn/en/docs/ProductDoc/ToolBoard/fly-ercf/ercfv2/wiring))
 - Device shows as `/dev/serial/by-id/usb-Klipper_stm32f072_XXXXX-if00`
 
 ### Pi 5-inch Screen
