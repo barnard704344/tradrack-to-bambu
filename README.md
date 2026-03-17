@@ -40,6 +40,7 @@ This project bridges Bambu's proprietary firmware and the open-source TradRack f
 | Raspberry Pi 4 | Runs Klipper, Happy Hare, Moonraker, and the bridge |
 | Fly-ECRF-V2 | Stepper driver board (STM32F072, TMC2209, USB to Pi) |
 | TradRack | Open-source filament changer (up to 8 slots) |
+| Binky Encoder | Filament motion sensor (12-tooth disc, connects to DIAG header on ECRF-V2) |
 
 See [docs/hardware.md](docs/hardware.md) for full hardware reference and wiring.
 
@@ -90,7 +91,7 @@ git clone https://github.com/moggieuk/Happy-Hare.git
 cd Happy-Hare && ./install.sh
 ```
 
-When prompted: select **Tradrack 1.0**, **8 gates**, board **"Not in list"** (option 15).
+When prompted: select **Tradrack 1.0**, **8 gates**, board **"Not in list"** (option 15). Answer **yes** when asked about the Binky encoder.
 
 ### 3. Clone This Repo and Run Setup
 

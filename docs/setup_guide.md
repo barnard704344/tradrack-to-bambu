@@ -50,7 +50,10 @@ cd Happy-Hare
 When the interactive installer prompts you:
 - **MMU Type**: Tradrack 1.0
 - **Number of gates**: 8
+- **Binky encoder**: Yes
 - **Board**: "Not in list" (option 15)
+
+Saying yes to Binky sets `mmu_version: 1.0e` (the "e" suffix), `encoder_resolution: 1.0` (12-tooth disc), and `gate_homing_endstop: encoder`.
 
 The installer creates config files in `~/printer_data/config/mmu/`.
 
@@ -162,7 +165,7 @@ These pin assignments come from the official Fly-ECRF-V2 pinout diagram. The `se
 | Direction | PA8 | gpio8 |
 | Enable | PA6 | gpio6 |
 | UART | PA9 | gpio9 |
-| Diag/Encoder | PA15 | gpio15 |
+| Diag/Encoder (Binky) | PA15 | gpio15 |
 | **Other** | | |
 | Servo | PB5 | gpio21 |
 | Neopixel | PA14 | gpio14 |
@@ -190,7 +193,21 @@ selector_touch_enable: 0
 gear_homing_endstop: none
 toolhead_sensor: none   # no sensor on P1S toolhead
 gate_sensor: none       # unless you've added gate sensors
+gate_homing_endstop: encoder          # Binky encoder for gate homing
 ```
+
+### mmu_hardware.cfg (encoder & version)
+
+Verify the Binky encoder settings:
+```ini
+mmu_version: 1.0e                    # "e" suffix = encoder fitted (Binky)
+
+[mmu_encoder mmu_encoder]
+encoder_pin: ^mmu:MMU_ENCODER        # PA15 (Gear DIAG header)
+encoder_resolution: 1.0              # Binky 12-tooth disc default (calibrate with MMU_CALIBRATE_ENCODER)
+```
+
+`setup.sh` verifies these automatically. After calibration, the actual resolution is stored in `mmu_vars.cfg` and overrides this default.
 
 ### mmu.cfg (MCU serial)
 
@@ -330,3 +347,17 @@ Common causes:
 - The P1S extruder is controlled by the P1S firmware as normal
 - Happy Hare's tip-forming works by controlling the TradRack gear motor to shape the filament tip before retraction
 - If you have filament sensors on the TradRack gates, configure them in `mmu_hardware.cfg`
+
+### Binky Encoder Calibration
+
+After initial setup and homing, calibrate the encoder:
+```bash
+# Via Moonraker API:
+curl -X POST http://localhost:7125/printer/gcode/script \
+  -H "Content-Type: application/json" \
+  -d '{"script": "MMU_CALIBRATE_ENCODER"}'
+```
+
+Or from KlipperScreen / console: `MMU_CALIBRATE_ENCODER`
+
+This measures the actual encoder resolution (should be close to 1.0 for a 12-tooth Binky) and saves the calibrated value to `mmu_vars.cfg`.

@@ -12,6 +12,7 @@
 | 5V Step-Down Converter | 24V → 5V buck converter | Powers Raspberry Pi from 24V rail |
 | 5-inch Touchscreen | Pi-compatible DSI/HDMI | KlipperScreen or status display |
 | TradRack | 8-slot filament changer | Open-source MMU |
+| Binky Encoder | 12-tooth disc encoder PCB | Filament motion sensing (clog detection, homing, flow monitoring) |
 
 ## Fly-ECRF-V2 Board
 
@@ -38,11 +39,21 @@ From the official Fly-ECRF-V2 pinout diagram:
 | Gear Dir | PA8 | gpio8 |
 | Gear Enable | PA6 | gpio6 |
 | Gear UART | PA9 | gpio9 |
-| Gear Diag/Encoder | PA15 | gpio15 |
+| Gear Diag/Encoder (Binky) | PA15 | gpio15 |
 | Servo | PB5 | gpio21 |
 | Neopixel | PA14 | gpio14 |
 
 GPIO convention: `gpio0`–`gpio15` = PA0–PA15, `gpio16`–`gpio31` = PB0–PB15.
+
+### Binky Encoder Wiring
+
+The Binky encoder PCB connects to the **Gear DIAG header** on the Fly-ECRF-V2 (PA15). This is a shared pin — both `MMU_GEAR_DIAG` and `MMU_ENCODER` map to PA15.
+
+- **Signal**: Binky encoder output → PA15 (Gear DIAG header)
+- **Power**: 3.3V and GND from the ECRF-V2 header
+- **Resolution**: 1.0 mm/pulse (12-tooth disc with BMG gear circumference)
+
+Happy Hare uses the encoder for gate homing, clog detection, flow rate monitoring, and filament runout detection.
 
 ## Wiring Overview
 
@@ -68,6 +79,17 @@ GPIO convention: `gpio0`–`gpio15` = PA0–PA15, `gpio16`–`gpio31` = PB0–PB
                      │  5" Screen │           │ USB-C
                      │            │◄──────────┘
                      └────────────┘
+```
+
+### Fly-ECRF-V2 to TradRack Connections
+
+```
+Fly-ECRF-V2                          TradRack
+├── Selector stepper (PA4/PA3/PA5) ──► Selector NEMA17
+├── Gear stepper (PA7/PA8/PA6) ─────► Gear NEMA14
+├── Servo (PB5) ────────────────────► Filament grip servo
+├── Gear DIAG header (PA15) ◄───────── Binky encoder PCB
+└── Neopixel (PA14) ────────────────► LED strip (optional)
 ```
 
 ## Power

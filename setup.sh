@@ -218,6 +218,35 @@ if [ -d "$PRINTER_DATA/config/mmu/base" ]; then
             echo "[OK] form_tip_macro already customized — not overwriting"
         fi
 
+        # Verify Binky encoder settings
+        # TradRack 1.0e uses Binky (12-tooth disc), resolution 1.0, gate homing via encoder
+        if grep -q "^mmu_version: 1.0$" "$MMU_HW" 2>/dev/null; then
+            echo "Adding Binky encoder suffix to mmu_version..."
+            sed -i 's|^mmu_version: 1.0\b|mmu_version: 1.0e|' "$MMU_HW"
+            echo "[OK] mmu_version set to 1.0e (encoder fitted)"
+        elif grep -q "^mmu_version: 1.0e" "$MMU_HW" 2>/dev/null; then
+            echo "[OK] mmu_version already includes Binky encoder suffix (1.0e)"
+        fi
+        if grep -q "^encoder_resolution:" "$MMU_HW" 2>/dev/null; then
+            # Ensure Binky default (1.0) is set — will be overridden by calibration
+            CURRENT_RES=$(grep "^encoder_resolution:" "$MMU_HW" | awk '{print $2}')
+            if [ "$CURRENT_RES" = "1.0" ]; then
+                echo "[OK] Encoder resolution is 1.0 (Binky 12-tooth default)"
+            else
+                echo "[INFO] Encoder resolution is $CURRENT_RES (expected 1.0 for Binky — may be calibrated)"
+            fi
+        fi
+        if grep -q "^gate_homing_endstop:" "$MMU_PARAMS" 2>/dev/null; then
+            CURRENT_ENDSTOP=$(grep "^gate_homing_endstop:" "$MMU_PARAMS" | awk '{print $2}')
+            if [ "$CURRENT_ENDSTOP" != "encoder" ]; then
+                echo "Setting gate_homing_endstop to 'encoder' (Binky fitted)..."
+                sed -i 's|^gate_homing_endstop:.*|gate_homing_endstop: encoder|' "$MMU_PARAMS"
+                echo "[OK] gate_homing_endstop set to encoder"
+            else
+                echo "[OK] gate_homing_endstop is 'encoder' (Binky fitted)"
+            fi
+        fi
+
         # Enable Happy Hare includes
         sed -i 's|^# \[include mmu/base/\*\.cfg\]|\[include mmu/base/*.cfg\]|' "$PRINTER_CFG"
         sed -i 's|^# \[include mmu/optional/client_macros\.cfg\]|\[include mmu/optional/client_macros.cfg\]|' "$PRINTER_CFG"
