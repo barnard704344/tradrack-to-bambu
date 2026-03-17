@@ -255,7 +255,43 @@ else
     exit 1
 fi
 
-# ── 5. Summary ──────────────────────────────────────────────
+# ── 5. Install bridge systemd service ───────────────────────
+
+echo
+echo "--- Bridge Service ---"
+
+SERVICE_NAME="tradrack-bridge"
+SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
+CURRENT_USER="$(whoami)"
+
+# Generate the unit file from the template, replacing tokens
+sed -e "s|BRIDGE_USER|${CURRENT_USER}|g" \
+    -e "s|BRIDGE_DIR|${SCRIPT_DIR}|g" \
+    "$SCRIPT_DIR/scripts/tradrack-bridge.service" > /tmp/tradrack-bridge.service
+
+# Only install / restart if the unit changed or doesn't exist yet
+if ! diff -q /tmp/tradrack-bridge.service "$SERVICE_FILE" &>/dev/null 2>&1; then
+    sudo cp /tmp/tradrack-bridge.service "$SERVICE_FILE"
+    sudo systemctl daemon-reload
+    echo "[OK] Service unit installed (user: $CURRENT_USER)"
+else
+    echo "[OK] Service unit already up to date"
+fi
+rm -f /tmp/tradrack-bridge.service
+
+sudo systemctl enable "$SERVICE_NAME" 2>/dev/null
+echo "[OK] Service enabled (starts on boot)"
+
+# Don't auto-start yet — config.yaml needs P1S details first
+if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+    echo "[OK] Service is running"
+else
+    echo "[INFO] Service is not running yet."
+    echo "       After editing config/config.yaml, start it with:"
+    echo "         sudo systemctl start tradrack-bridge"
+fi
+
+# ── 6. Summary ──────────────────────────────────────────────
 
 echo
 echo "========================================="
@@ -269,6 +305,7 @@ echo "    - klipper-mcu host service"
 echo "    - printer.cfg (TradRack-only)"
 echo "    - fly-ecrf-v2-tradrack.cfg (pin reference)"
 echo "    - Python venv + bridge dependencies"
+echo "    - tradrack-bridge.service (systemd, auto-starts on boot)"
 echo
 echo "  Next steps:"
 
@@ -292,9 +329,13 @@ fi
 echo "    3. Edit config/config.yaml with your P1S details:"
 echo "         nano $SCRIPT_DIR/config/config.yaml"
 echo
-echo "    4. Run the bridge:"
-echo "         cd $SCRIPT_DIR"
-echo "         source venv/bin/activate"
+echo "    4. Start the bridge service:"
+echo "         sudo systemctl start tradrack-bridge"
+echo "         sudo systemctl status tradrack-bridge"
+echo "         journalctl -u tradrack-bridge -f    # watch logs"
+echo
+echo "    Manual run (for debugging):"
+echo "         cd $SCRIPT_DIR && source venv/bin/activate"
 echo "         python -m src.main status    # check connectivity"
-echo "         python -m src.main bridge    # start the bridge"
+echo "         python -m src.main bridge    # run in foreground"
 echo

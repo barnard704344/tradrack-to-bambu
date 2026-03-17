@@ -1,0 +1,22 @@
+# tradrack-bridge.service — installed by setup.sh
+# Paths are filled in at install time from the running user + directory.
+
+[Unit]
+Description=TradRack-to-Bambu Bridge
+Documentation=https://github.com/barnard704344/tradrack-to-bambu
+After=network-online.target klipper.service moonraker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=BRIDGE_USER
+WorkingDirectory=BRIDGE_DIR
+ExecStart=BRIDGE_DIR/venv/bin/python -m src.main bridge
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tradrack-bridge
+
+[Install]
+WantedBy=multi-user.target
