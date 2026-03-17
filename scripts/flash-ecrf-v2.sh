@@ -1,21 +1,24 @@
 #!/bin/bash
 # ============================================================
-# Flash Klipper firmware to Fly-ECRF-V2 (STM32F072) via USB
+# Flash Klipper firmware to Fly-ECRF-V2 (RP2040) via USB
 # ============================================================
 #
-# Wiring & DIP switch documentation:
+# Docs & wiring:
+#   https://mellow.klipper.cn/en/docs/ProductDoc/ToolBoard/fly-ercf/ercfv2/flash/usb
 #   https://mellow.klipper.cn/en/docs/ProductDoc/ToolBoard/fly-ercf/ercfv2/wiring
 #
-# Before running this script:
-#   1. Set DIP switches to USB mode (NOT CAN) — see wiring link above
-#   2. Hold the BOOT button on the ECRF-V2 board
-#   3. Connect the board to the Pi via USB-C
-#   4. Release the BOOT button
-#   5. Run this script
+# Two-stage flash process:
+#   Stage 1: Flash Katapult USB bootloader via UF2 (board in BOOTSEL mode)
+#   Stage 2: Compile Klipper for RP2040 and flash via Katapult
 #
-# After flashing, unplug and re-plug USB, then run:
-#   ls /dev/serial/by-id/usb-Klipper_stm32f072*
-# to find the serial path for mmu.cfg.
+# Before running this script:
+#   1. Hold the BOOT button on the ECRF-V2 board
+#   2. Connect the board to the Pi via USB-C
+#   3. Release the BOOT button
+#   4. Run this script
+#
+# After flashing, the board appears at:
+#   ls /dev/serial/by-id/usb-Klipper_rp2040*
 #
 # Usage:
 #   cd ~/tradrack-to-bambu
@@ -26,10 +29,12 @@
 set -e
 
 KLIPPER_DIR="$HOME/klipper"
+KATAPULT_DIR="$HOME/katapult"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-echo "=== Fly-ECRF-V2 Klipper Firmware Flash (USB mode) ==="
+echo "=== Fly-ECRF-V2 Klipper Firmware Flash (RP2040, USB mode) ==="
 echo
-echo "  Docs: https://mellow.klipper.cn/en/docs/ProductDoc/ToolBoard/fly-ercf/ercfv2/wiring"
+echo "  Docs: https://mellow.klipper.cn/en/docs/ProductDoc/ToolBoard/fly-ercf/ercfv2/flash/usb"
 echo
 
 # Check Klipper source exists
@@ -38,86 +43,195 @@ if [ ! -d "$KLIPPER_DIR" ]; then
     exit 1
 fi
 
-# Check dfu-util is installed
-if ! command -v dfu-util &>/dev/null; then
-    echo "Installing dfu-util..."
-    sudo apt-get update -qq && sudo apt-get install -y dfu-util
+# ── Stage 1: Flash Katapult USB bootloader via UF2 ──────────
+
+# Check if Katapult is installed; clone if not
+if [ ! -d "$KATAPULT_DIR" ]; then
+    echo "Katapult not found — cloning..."
+    git clone https://github.com/Arksine/katapult.git "$KATAPULT_DIR"
 fi
 
-# Check board is in DFU mode
-echo "Checking for board in DFU mode..."
-DFU_DEVICE=$(lsusb 2>/dev/null | grep -i "0483:df11" || true)
+# Check if board already has Katapult running (skip UF2 stage)
+KATAPULT_SERIAL=""
+for dev in /dev/serial/by-id/usb-katapult_rp2040*; do
+    if [ -e "$dev" ]; then
+        KATAPULT_SERIAL="$dev"
+        break
+    fi
+done
 
-if [ -z "$DFU_DEVICE" ]; then
-    echo
-    echo "ERROR: No STM32 DFU device found!"
-    echo
-    echo "To enter DFU mode:"
-    echo "  1. Set DIP switches to USB mode (see docs link above)"
-    echo "  2. Hold the BOOT button on the ECRF-V2 board"
-    echo "  3. Connect (or re-connect) USB-C to the Pi"
-    echo "  4. Release the BOOT button"
-    echo "  5. Run this script again"
-    echo
-    echo "Verify with: lsusb | grep 0483:df11"
-    exit 1
+# Check if board already has Klipper running (needs Katapult re-entry)
+KLIPPER_SERIAL=""
+for dev in /dev/serial/by-id/usb-Klipper_rp2040*; do
+    if [ -e "$dev" ]; then
+        KLIPPER_SERIAL="$dev"
+        break
+    fi
+done
+
+if [ -n "$KATAPULT_SERIAL" ]; then
+    echo "[OK] Katapult bootloader already running at: $KATAPULT_SERIAL"
+    echo "     Skipping UF2 stage."
+elif [ -n "$KLIPPER_SERIAL" ]; then
+    echo "[OK] Klipper already running at: $KLIPPER_SERIAL"
+    echo "     To re-flash, entering Katapult bootloader mode..."
+    cd "$KLIPPER_DIR" && make flash FLASH_DEVICE="$KLIPPER_SERIAL" 2>&1 | tail -5 || true
+    sleep 3
+    for dev in /dev/serial/by-id/usb-katapult_rp2040*; do
+        if [ -e "$dev" ]; then
+            KATAPULT_SERIAL="$dev"
+            break
+        fi
+    done
+    if [ -z "$KATAPULT_SERIAL" ]; then
+        echo "[WARN] Could not enter Katapult mode. Hold BOOT, re-plug USB, and try again."
+        exit 1
+    fi
+else
+    # Board should be in BOOTSEL mode (RP2 Boot) — flash Katapult via UF2
+    echo "Checking for board in BOOTSEL mode (RP2 Boot)..."
+    RP2_DEVICE=$(lsusb 2>/dev/null | grep -i "2e8a:0003" || true)
+
+    if [ -z "$RP2_DEVICE" ]; then
+        echo
+        echo "ERROR: No RP2040 BOOTSEL device found!"
+        echo
+        echo "To enter BOOTSEL mode:"
+        echo "  1. Hold the BOOT button on the ECRF-V2 board"
+        echo "  2. Connect (or re-connect) USB-C to the Pi"
+        echo "  3. Release the BOOT button"
+        echo "  4. Run this script again"
+        echo
+        echo "Verify with: lsusb | grep 2e8a:0003"
+        exit 1
+    fi
+
+    echo "[OK] RP2040 BOOTSEL device found: $RP2_DEVICE"
+
+    # Wait for the RPI-RP2 drive to mount
+    echo "Waiting for RPI-RP2 boot drive to mount..."
+    RP2_MOUNT=""
+    for i in $(seq 1 15); do
+        # Check common mount points
+        for mp in /media/*/RPI-RP2 /mnt/RPI-RP2 /run/media/*/RPI-RP2; do
+            if [ -d "$mp" ] 2>/dev/null; then
+                RP2_MOUNT="$mp"
+                break 2
+            fi
+        done
+        # Try to find it via lsblk
+        PART=$(lsblk -rno NAME,LABEL 2>/dev/null | grep -i "RPI-RP2" | awk '{print $1}' | head -1)
+        if [ -n "$PART" ]; then
+            # Auto-mount if not mounted
+            sudo mkdir -p /mnt/RPI-RP2
+            sudo mount "/dev/$PART" /mnt/RPI-RP2 2>/dev/null || true
+            if mountpoint -q /mnt/RPI-RP2 2>/dev/null; then
+                RP2_MOUNT="/mnt/RPI-RP2"
+                break
+            fi
+        fi
+        sleep 1
+    done
+
+    if [ -z "$RP2_MOUNT" ]; then
+        echo
+        echo "ERROR: RPI-RP2 boot drive not found/mounted!"
+        echo "       The board is in BOOTSEL mode but the drive didn't mount."
+        echo "       Try manually: sudo mkdir -p /mnt/RPI-RP2 && sudo mount /dev/sda1 /mnt/RPI-RP2"
+        exit 1
+    fi
+
+    echo "[OK] RPI-RP2 drive mounted at: $RP2_MOUNT"
+
+    # Build Katapult for RP2040 USB
+    echo "Building Katapult USB bootloader for RP2040..."
+    cat > "$KATAPULT_DIR/.config" << 'KATAPULT_CFG'
+CONFIG_LOW_LEVEL_OPTIONS=y
+CONFIG_MACH_RPXXXX=y
+CONFIG_MACH_RP2040=y
+CONFIG_RP2040_FLASH_W25Q080=y
+CONFIG_RPXXXX_FLASH_START_0100=y
+CONFIG_RPXXXX_USB=y
+CONFIG_INITIAL_PINS=""
+KATAPULT_CFG
+    make -C "$KATAPULT_DIR" olddefconfig 2>&1 | tail -3
+
+    make -C "$KATAPULT_DIR" clean 2>/dev/null
+    make -C "$KATAPULT_DIR" -j"$(nproc)" 2>&1 | tail -5
+    echo "[OK] Katapult bootloader built"
+
+    # Copy UF2 to the RP2 boot drive
+    if [ ! -f "$KATAPULT_DIR/out/katapult.uf2" ]; then
+        echo "ERROR: Katapult UF2 file not found at $KATAPULT_DIR/out/katapult.uf2"
+        exit 1
+    fi
+
+    echo "Copying Katapult UF2 to RPI-RP2 drive..."
+    sudo cp "$KATAPULT_DIR/out/katapult.uf2" "$RP2_MOUNT/"
+    sync
+    echo "[OK] Katapult UF2 copied — board should reboot automatically"
+
+    # Wait for the board to reboot into Katapult
+    echo "Waiting for Katapult USB serial device..."
+    sleep 3
+    for i in $(seq 1 20); do
+        for dev in /dev/serial/by-id/usb-katapult_rp2040*; do
+            if [ -e "$dev" ]; then
+                KATAPULT_SERIAL="$dev"
+                break 2
+            fi
+        done
+        sleep 1
+    done
+
+    if [ -z "$KATAPULT_SERIAL" ]; then
+        echo
+        echo "ERROR: Katapult serial device not found after flashing bootloader."
+        echo "       Check the board LED — it should be blinking."
+        echo "       Try: ls /dev/serial/by-id/"
+        exit 1
+    fi
+
+    echo "[OK] Katapult running at: $KATAPULT_SERIAL"
 fi
 
-echo "[OK] DFU device found: $DFU_DEVICE"
+# ── Stage 2: Build and flash Klipper via Katapult ───────────
 
-# Save current klipper .config (if any) and write ECRF-V2 config
+# Save current klipper .config (if any)
 SAVED_CONFIG=""
 if [ -f "$KLIPPER_DIR/.config" ]; then
     SAVED_CONFIG=$(cat "$KLIPPER_DIR/.config")
 fi
 
-echo "Writing Fly-ECRF-V2 firmware config (STM32F072, USB on PA11/PA12)..."
+echo
+echo "Building Klipper firmware for RP2040 (16KiB bootloader, USB)..."
 cat > "$KLIPPER_DIR/.config" << 'ECRF_FW'
 CONFIG_LOW_LEVEL_OPTIONS=y
-CONFIG_MACH_STM32=y
-CONFIG_BOARD_DIRECTORY="stm32"
-CONFIG_MCU="stm32f072xb"
-CONFIG_CLOCK_FREQ=48000000
-CONFIG_FLASH_SIZE=0x20000
-CONFIG_FLASH_BOOT_ADDRESS=0x8000000
-CONFIG_RAM_START=0x20000000
-CONFIG_RAM_SIZE=0x4000
-CONFIG_STACK_SIZE=512
-CONFIG_FLASH_APPLICATION_ADDRESS=0x8000000
-CONFIG_STM32_SELECT=y
-CONFIG_MACH_STM32F072=y
-CONFIG_STM32_CLOCK_REF_INTERNAL=y
-CONFIG_STM32_USB_PA11_PA12=y
-CONFIG_USB_VENDOR_ID=0x1d50
-CONFIG_USB_DEVICE_ID=0x614e
-CONFIG_USB_SERIAL_NUMBER_CHIPID=y
-CONFIG_CANBUS_FREQUENCY=1000000
-CONFIG_INITIAL_PINS=""
-CONFIG_HAVE_GPIO=y
-CONFIG_HAVE_GPIO_ADC=y
-CONFIG_HAVE_GPIO_SPI=y
-CONFIG_HAVE_GPIO_I2C=y
-CONFIG_HAVE_GPIO_HARD_PWM=y
-CONFIG_HAVE_STRICT_TIMING=y
-CONFIG_HAVE_CHIPID=y
-CONFIG_HAVE_STEPPER_BOTH_EDGE=y
-CONFIG_STEPPER_STEP_BOTH_EDGE=y
-CONFIG_HAVE_BOOTLOADER_REQUEST=y
-CONFIG_HAVE_LCD_MENU=y
+CONFIG_MACH_RPXXXX=y
+CONFIG_MACH_RP2040=y
+CONFIG_RP2040_FLASH_W25Q080=y
+CONFIG_RPXXXX_FLASH_START_4000=y
+CONFIG_RPXXXX_USB=y
+CONFIG_INITIAL_PINS="gpio17"
 ECRF_FW
+make -C "$KLIPPER_DIR" olddefconfig 2>&1 | tail -3
 
-echo "Building firmware..."
 make -C "$KLIPPER_DIR" clean 2>/dev/null
 make -C "$KLIPPER_DIR" -j"$(nproc)" 2>&1 | tail -5
-echo "[OK] Firmware built"
+echo "[OK] Klipper firmware built"
 
 echo
-echo "Flashing via DFU..."
-sudo dfu-util -a 0 -D "$KLIPPER_DIR/out/klipper.bin" \
-    -s 0x08000000:leave 2>&1 | tail -3
+echo "Flashing Klipper via Katapult..."
+if [ -f "$HOME/klippy-env/bin/python" ]; then
+    PYTHON="$HOME/klippy-env/bin/python"
+else
+    PYTHON="python3"
+fi
+
+"$PYTHON" "$KATAPULT_DIR/scripts/flashtool.py" -d "$KATAPULT_SERIAL" 2>&1 | tail -10
 
 echo
-echo "[OK] Firmware flashed!"
+echo "[OK] Klipper firmware flashed!"
 
 # Restore Linux MCU config if we had one
 if [ -n "$SAVED_CONFIG" ]; then
@@ -125,11 +239,29 @@ if [ -n "$SAVED_CONFIG" ]; then
     echo "[OK] Restored previous .config (Linux host MCU)"
 fi
 
+# Wait for Klipper serial to appear
+echo "Waiting for Klipper serial device..."
+sleep 3
+KLIPPER_SERIAL=""
+for i in $(seq 1 15); do
+    for dev in /dev/serial/by-id/usb-Klipper_rp2040*; do
+        if [ -e "$dev" ]; then
+            KLIPPER_SERIAL="$dev"
+            break 2
+        fi
+    done
+    sleep 1
+done
+
+if [ -n "$KLIPPER_SERIAL" ]; then
+    echo "[OK] Klipper MCU detected at: $KLIPPER_SERIAL"
+else
+    echo "[WARN] Klipper serial device not found yet."
+    echo "       Try: ls /dev/serial/by-id/"
+fi
+
 echo
-echo "Now:"
-echo "  1. Disconnect and reconnect the USB cable"
-echo "  2. Wait 5 seconds, then run:"
-echo "       ls /dev/serial/by-id/usb-Klipper_stm32f072*"
-echo "  3. Copy that path and re-run setup.sh to auto-configure:"
+echo "Next steps:"
+echo "  1. Run setup.sh to auto-configure:"
 echo "       cd ~/tradrack-to-bambu && ./setup.sh"
 echo

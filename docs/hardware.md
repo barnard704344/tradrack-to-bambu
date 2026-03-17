@@ -7,7 +7,7 @@
 | Component | Details | Purpose |
 |-----------|---------|---------|
 | Raspberry Pi 4 | 4GB/8GB | Runs Klipper, Happy Hare, Moonraker, bridge |
-| Fly-ECRF-V2 | STM32F072, TMC2209 UART | TradRack stepper drivers (selector + gear) |
+| Fly-ECRF-V2 | RP2040, TMC2209 UART | TradRack stepper drivers (selector + gear) |
 | MeanWell 24V PSU | 24V 3.5A (84W) | Powers Fly-ECRF-V2 and TradRack motors |
 | 5V Step-Down Converter | 24V → 5V buck converter | Powers Raspberry Pi from 24V rail |
 | 5-inch Touchscreen | Pi-compatible DSI/HDMI | KlipperScreen or status display |
@@ -16,10 +16,10 @@
 
 ## Fly-ECRF-V2 Board
 
-- **MCU**: STM32F072 (48 MHz, internal clock)
+- **MCU**: RP2040 (Raspberry Pi silicon)
 - **Stepper drivers**: 2× TMC2209 (UART mode)
-- **Communication**: USB (on PA11/PA12) — DIP switches must be set to USB mode
-- **Firmware**: Klipper MCU (no bootloader, internal clock reference)
+- **Communication**: USB
+- **Firmware**: Klipper MCU with Katapult bootloader (16KiB offset)
 
 **Wiring and DIP switch documentation:**
 https://mellow.klipper.cn/en/docs/ProductDoc/ToolBoard/fly-ercf/ercfv2/wiring
@@ -28,28 +28,28 @@ https://mellow.klipper.cn/en/docs/ProductDoc/ToolBoard/fly-ercf/ercfv2/wiring
 
 From the official Fly-ECRF-V2 pinout diagram:
 
-| Function | STM32 Pin | GPIO Number |
-|----------|-----------|-------------|
-| Selector Step | PA4 | gpio4 |
-| Selector Dir | PA3 | gpio3 |
-| Selector Enable | PA5 | gpio5 |
-| Selector UART | PA2 | gpio2 |
-| Selector Diag/Endstop | PB4 | gpio20 |
-| Gear Step | PA7 | gpio7 |
-| Gear Dir | PA8 | gpio8 |
-| Gear Enable | PA6 | gpio6 |
-| Gear UART | PA9 | gpio9 |
-| Gear Diag/Encoder (Binky) | PA15 | gpio15 |
-| Servo | PB5 | gpio21 |
-| Neopixel | PA14 | gpio14 |
+| Function | GPIO Pin |
+|----------|----------|
+| Selector Step | gpio4 |
+| Selector Dir | gpio3 |
+| Selector Enable | gpio5 |
+| Selector UART | gpio2 |
+| Selector Diag/Endstop | gpio20 |
+| Gear Step | gpio7 |
+| Gear Dir | gpio8 |
+| Gear Enable | gpio6 |
+| Gear UART | gpio9 |
+| Gear Diag/Encoder (Binky) | gpio15 |
+| Servo | gpio21 |
+| Neopixel | gpio14 |
 
-GPIO convention: `gpio0`–`gpio15` = PA0–PA15, `gpio16`–`gpio31` = PB0–PB15.
+Pins are referenced as RP2040 GPIO numbers (`gpio0`–`gpio29`).
 
 ### Binky Encoder Wiring
 
-The Binky encoder PCB connects to the **Gear DIAG header** on the Fly-ECRF-V2 (PA15). This is a shared pin — both `MMU_GEAR_DIAG` and `MMU_ENCODER` map to PA15.
+The Binky encoder PCB connects to the **Gear DIAG header** on the Fly-ECRF-V2 (gpio15). This is a shared pin — both `MMU_GEAR_DIAG` and `MMU_ENCODER` map to gpio15.
 
-- **Signal**: Binky encoder output → PA15 (Gear DIAG header)
+- **Signal**: Binky encoder output → gpio15 (Gear DIAG header)
 - **Power**: 3.3V and GND from the ECRF-V2 header
 - **Resolution**: 1.0 mm/pulse (12-tooth disc with BMG gear circumference)
 
@@ -85,11 +85,11 @@ Happy Hare uses the encoder for gate homing, clog detection, flow rate monitorin
 
 ```
 Fly-ECRF-V2                          TradRack
-├── Selector stepper (PA4/PA3/PA5) ──► Selector NEMA17
-├── Gear stepper (PA7/PA8/PA6) ─────► Gear NEMA14
-├── Servo (PB5) ────────────────────► Filament grip servo
-├── Gear DIAG header (PA15) ◄───────── Binky encoder PCB
-└── Neopixel (PA14) ────────────────► LED strip (optional)
+├── Selector stepper (gpio4/3/5) ─────► Selector NEMA17
+├── Gear stepper (gpio7/8/6) ───────► Gear NEMA14
+├── Servo (gpio21) ────────────────► Filament grip servo
+├── Gear DIAG header (gpio15) ◄─────── Binky encoder PCB
+└── Neopixel (gpio14) ─────────────► LED strip (optional)
 ```
 
 ## Power
@@ -119,7 +119,7 @@ Fly-ECRF-V2                          TradRack
 - USB-A (Pi) to USB-C (Fly-ECRF-V2)
 - Provides Klipper MCU serial communication
 - DIP switches on ECRF-V2 must be set to USB mode (see [Mellow wiring docs](https://mellow.klipper.cn/en/docs/ProductDoc/ToolBoard/fly-ercf/ercfv2/wiring))
-- Device shows as `/dev/serial/by-id/usb-Klipper_stm32f072_XXXXX-if00`
+- Device shows as `/dev/serial/by-id/usb-Klipper_rp2040_XXXXX-if00`
 
 ### Pi 5-inch Screen
 - DSI ribbon cable or HDMI (depending on screen model)

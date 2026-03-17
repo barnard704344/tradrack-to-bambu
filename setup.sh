@@ -145,9 +145,9 @@ if [ -d "$PRINTER_DATA/config/mmu/base" ]; then
         echo "[OK] Fixed servo_move_angle empty string"
     fi
 
-    # Detect Fly-ECRF-V2 board (or any Klipper USB device)
+    # Detect Fly-ECRF-V2 board (RP2040 Klipper USB device)
     ECRF_SERIAL=""
-    for dev in /dev/serial/by-id/usb-Klipper_stm32f072*; do
+    for dev in /dev/serial/by-id/usb-Klipper_rp2040*; do
         if [ -e "$dev" ]; then
             ECRF_SERIAL="$dev"
             break
@@ -165,21 +165,21 @@ if [ -d "$PRINTER_DATA/config/mmu/base" ]; then
         # Apply Fly-ECRF-V2 pin aliases if still using placeholders
         if grep -q '{gear_uart_pin}' "$MMU_MCU" 2>/dev/null; then
             echo "Applying Fly-ECRF-V2 pin aliases to mmu.cfg..."
-            sed -i 's|{gear_uart_pin}|PA9|g'          "$MMU_MCU"
-            sed -i 's|{gear_step_pin}|PA7|g'          "$MMU_MCU"
-            sed -i 's|{gear_dir_pin}|PA8|g'           "$MMU_MCU"
-            sed -i 's|{gear_enable_pin}|PA6|g'        "$MMU_MCU"
-            sed -i 's|{gear_diag_pin}|PA15|g'         "$MMU_MCU"
-            sed -i 's|{selector_uart_pin}|PA2|g'      "$MMU_MCU"
-            sed -i 's|{selector_step_pin}|PA4|g'      "$MMU_MCU"
-            sed -i 's|{selector_dir_pin}|PA3|g'       "$MMU_MCU"
-            sed -i 's|{selector_enable_pin}|PA5|g'    "$MMU_MCU"
-            sed -i 's|{selector_diag_pin}|PB4|g'      "$MMU_MCU"
-            sed -i 's|{selector_endstop_pin}|PB4|g'   "$MMU_MCU"
-            sed -i 's|{selector_servo_pin}|PB5|g'     "$MMU_MCU"
-            sed -i 's|{encoder_pin}|PA15|g'           "$MMU_MCU"
-            sed -i 's|{neopixel_pin}|PA14|g'          "$MMU_MCU"
-            sed -i 's|MCU type unknown|Fly-ECRF-V2 (STM32F072)|g' "$MMU_MCU"
+            sed -i 's|{gear_uart_pin}|gpio9|g'          "$MMU_MCU"
+            sed -i 's|{gear_step_pin}|gpio7|g'          "$MMU_MCU"
+            sed -i 's|{gear_dir_pin}|gpio8|g'           "$MMU_MCU"
+            sed -i 's|{gear_enable_pin}|gpio6|g'        "$MMU_MCU"
+            sed -i 's|{gear_diag_pin}|gpio15|g'         "$MMU_MCU"
+            sed -i 's|{selector_uart_pin}|gpio2|g'      "$MMU_MCU"
+            sed -i 's|{selector_step_pin}|gpio4|g'      "$MMU_MCU"
+            sed -i 's|{selector_dir_pin}|gpio3|g'       "$MMU_MCU"
+            sed -i 's|{selector_enable_pin}|gpio5|g'    "$MMU_MCU"
+            sed -i 's|{selector_diag_pin}|gpio20|g'     "$MMU_MCU"
+            sed -i 's|{selector_endstop_pin}|gpio20|g'  "$MMU_MCU"
+            sed -i 's|{selector_servo_pin}|gpio21|g'    "$MMU_MCU"
+            sed -i 's|{encoder_pin}|gpio15|g'           "$MMU_MCU"
+            sed -i 's|{neopixel_pin}|gpio14|g'          "$MMU_MCU"
+            sed -i 's|MCU type unknown|Fly-ECRF-V2 (RP2040)|g' "$MMU_MCU"
             echo "[OK] Fly-ECRF-V2 pin aliases applied"
         else
             echo "[OK] Pin aliases already configured"
@@ -208,6 +208,15 @@ if [ -d "$PRINTER_DATA/config/mmu/base" ]; then
             sed -i 's|^pre_gate_switch_pin_|#pre_gate_switch_pin_|'   "$MMU_HW"
             sed -i 's|^post_gear_switch_pin_|#post_gear_switch_pin_|' "$MMU_HW"
             echo "[OK] Unavailable sensor pins commented out"
+        fi
+
+        # Comment out sync_feedback_analog options (not valid without analog_pin set)
+        if grep -q '^sync_feedback_analog_max_compression:' "$MMU_HW" 2>/dev/null; then
+            echo "Commenting out sync_feedback_analog options (no analog pin on Fly-ECRF-V2)..."
+            sed -i 's|^sync_feedback_analog_max_compression:|#sync_feedback_analog_max_compression:|' "$MMU_HW"
+            sed -i 's|^sync_feedback_analog_max_expansion:|#sync_feedback_analog_max_expansion:|'     "$MMU_HW"
+            sed -i 's|^sync_feedback_analog_pullup:|#sync_feedback_analog_pullup:|'                   "$MMU_HW"
+            echo "[OK] sync_feedback_analog options commented out"
         fi
 
         # Apply TradRack-tuned defaults to mmu_parameters.cfg

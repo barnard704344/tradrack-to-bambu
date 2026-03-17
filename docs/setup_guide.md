@@ -8,13 +8,13 @@ The setup installs:
 - **Klipper** — host software and Linux host MCU service (`klipper-mcu`)
 - **Moonraker** — API server for Klipper
 - **Happy Hare** — MMU firmware (manages TradRack selector, gear, servo)
-- **Fly-ECRF-V2 firmware** — Klipper MCU on the STM32F072 stepper driver board
+- **Fly-ECRF-V2 firmware** — Klipper MCU on the RP2040 stepper driver board
 - **tradrack-to-bambu bridge** — Python service that connects P1S ↔ TradRack
 
 ## 1. Prerequisites
 
 - Raspberry Pi 4 (2GB+ RAM) running **Raspberry Pi OS Lite (Bookworm)**
-- Fly-ECRF-V2 board (STM32F072, TMC2209)
+- Fly-ECRF-V2 board (RP2040, TMC2209)
 - TradRack hardware assembled and wired to the Fly-ECRF-V2
 - Network connection to same LAN as the BambuLab P1S
 - USB-C cable between Pi and Fly-ECRF-V2
@@ -85,26 +85,25 @@ chmod +x setup.sh
 
 ## 5. Flash Fly-ECRF-V2 Firmware (USB Mode)
 
-The Fly-ECRF-V2 uses an STM32F072 MCU. The automated flash script handles everything.
+The Fly-ECRF-V2 uses an **RP2040** MCU. The automated flash script handles everything via a two-stage process.
 
-### DIP Switch Configuration
+### Flash Overview
 
-**Important:** Set the DIP switches on the Fly-ECRF-V2 to **USB mode** (not CAN bus).
+The flash script performs two stages:
+1. **Stage 1**: Flashes the Katapult USB bootloader via UF2 (board in BOOTSEL mode)
+2. **Stage 2**: Compiles Klipper firmware for RP2040 and flashes it via Katapult
 
-See the Mellow wiring documentation for DIP switch positions:
-https://mellow.klipper.cn/en/docs/ProductDoc/ToolBoard/fly-ercf/ercfv2/wiring
-
-### Enter DFU Mode
+### Enter BOOTSEL Mode
 
 1. Disconnect the USB cable from the Fly-ECRF-V2
 2. Hold the **BOOT** button on the board
 3. Connect USB-C cable from Pi to the Fly-ECRF-V2
 4. Release the BOOT button after ~1 second
 
-Verify DFU mode:
+Verify BOOTSEL mode:
 ```bash
-lsusb | grep 0483:df11
-# Should show: STMicroelectronics STM Device in DFU Mode
+lsusb | grep 2e8a:0003
+# Should show: Raspberry Pi RP2 Boot
 ```
 
 ### Flash
@@ -116,10 +115,10 @@ chmod +x scripts/flash-ecrf-v2.sh
 ```
 
 The script automatically:
-- Installs `dfu-util` if needed
-- Writes the correct Klipper firmware config (STM32F072, USB on PA11/PA12, internal clock, no bootloader)
-- Builds the firmware
-- Flashes via DFU
+- Clones and builds Katapult bootloader for RP2040 USB
+- Mounts the RPI-RP2 boot drive and copies the Katapult UF2 file
+- Compiles Klipper firmware for RP2040 (16KiB bootloader, USBSERIAL, gpio17 startup pin)
+- Flashes Klipper via Katapult's flashtool
 - Restores the Linux host MCU `.config` afterward
 
 ### Firmware Configuration Details
@@ -128,49 +127,48 @@ For reference, these are the firmware settings (the flash script sets them autom
 
 | Setting | Value |
 |---------|-------|
-| MCU Architecture | STMicroelectronics STM32 |
-| Processor model | STM32F072 |
-| Bootloader offset | No bootloader |
-| Clock Reference | **Internal clock** (not 8 MHz crystal) |
-| Communication interface | USB (on PA11/PA12) |
+| MCU Architecture | Raspberry Pi RP2040/RP235x |
+| Processor model | rp2040 |
+| Bootloader offset | 16KiB bootloader (Katapult) |
+| Communication interface | USBSERIAL |
+| GPIO pins at startup | gpio17 |
 
 ### After Flashing
 
-1. Disconnect and reconnect the USB cable
-2. Wait 5 seconds
-3. Verify the board enumerates:
-   ```bash
-   ls /dev/serial/by-id/usb-Klipper_stm32f072*
-   # Should show: usb-Klipper_stm32f072_XXXXX-if00
-   ```
-4. Re-run setup to auto-detect and configure:
-   ```bash
-   cd ~/tradrack-to-bambu && ./setup.sh
-   ```
+The script waits for the board to appear automatically. Verify:
+```bash
+ls /dev/serial/by-id/usb-Klipper_rp2040*
+# Should show: usb-Klipper_rp2040_XXXXX-if00
+```
+
+Then re-run setup to auto-detect and configure:
+```bash
+cd ~/tradrack-to-bambu && ./setup.sh
+```
 
 ## 6. Fly-ECRF-V2 Pin Mapping
 
 These pin assignments come from the official Fly-ECRF-V2 pinout diagram. The `setup.sh` script applies them to `mmu.cfg` automatically.
 
-| Function | STM32 Pin | GPIO Number |
-|----------|-----------|-------------|
-| **Selector** | | |
-| Step | PA4 | gpio4 |
-| Direction | PA3 | gpio3 |
-| Enable | PA5 | gpio5 |
-| UART | PA2 | gpio2 |
-| Diag/Endstop | PB4 | gpio20 |
-| **Gear** | | |
-| Step | PA7 | gpio7 |
-| Direction | PA8 | gpio8 |
-| Enable | PA6 | gpio6 |
-| UART | PA9 | gpio9 |
-| Diag/Encoder (Binky) | PA15 | gpio15 |
-| **Other** | | |
-| Servo | PB5 | gpio21 |
-| Neopixel | PA14 | gpio14 |
+| Function | GPIO Pin |
+|----------|----------|
+| **Selector** | |
+| Step | gpio4 |
+| Direction | gpio3 |
+| Enable | gpio5 |
+| UART | gpio2 |
+| Diag/Endstop | gpio20 |
+| **Gear** | |
+| Step | gpio7 |
+| Direction | gpio8 |
+| Enable | gpio6 |
+| UART | gpio9 |
+| Diag/Encoder (Binky) | gpio15 |
+| **Other** | |
+| Servo | gpio21 |
+| Neopixel | gpio14 |
 
-GPIO convention: `gpio0`–`gpio15` = PA0–PA15, `gpio16`–`gpio31` = PB0–PB15.
+Pins are referenced as RP2040 GPIO numbers (`gpio0`–`gpio29`).
 
 See `klipper/fly-ecrf-v2-tradrack.cfg` in this repo for the full pin reference file.
 
@@ -203,7 +201,7 @@ Verify the Binky encoder settings:
 mmu_version: 1.0e                    # "e" suffix = encoder fitted (Binky)
 
 [mmu_encoder mmu_encoder]
-encoder_pin: ^mmu:MMU_ENCODER        # PA15 (Gear DIAG header)
+encoder_pin: ^mmu:MMU_ENCODER        # gpio15 (Gear DIAG header)
 encoder_resolution: 1.0              # Binky 12-tooth disc default (calibrate with MMU_CALIBRATE_ENCODER)
 ```
 
@@ -217,7 +215,7 @@ nano ~/printer_data/config/mmu/base/mmu.cfg
 
 The serial path should match your board:
 ```ini
-serial: /dev/serial/by-id/usb-Klipper_stm32f072_XXXXX-if00
+serial: /dev/serial/by-id/usb-Klipper_rp2040_XXXXX-if00
 ```
 
 If `setup.sh` detected the board, this was set automatically.
@@ -327,13 +325,12 @@ tail -100 ~/printer_data/logs/klippy.log
 Common causes:
 - **servo_move_angle empty string**: `setup.sh` fixes this automatically
 - **Missing extruder**: only needed if ECRF-V2 is connected. `setup.sh` handles this
-- **Invalid pins on host MCU**: pins like PA4/PB5 only work on the STM32 MCU, not the Linux host MCU
+- **Invalid pins on host MCU**: gpio pins only work on the RP2040 MMU MCU, not the Linux host MCU
 
 ### Board not detected after flashing
-1. DIP switches must be in USB mode (not CAN)
-2. Unplug and replug USB after flashing
-3. Check: `ls /dev/serial/by-id/usb-Klipper_stm32f072*`
-4. If nothing shows, re-enter DFU mode and reflash
+1. Check: `ls /dev/serial/by-id/usb-Klipper_rp2040*`
+2. If nothing shows, hold BOOT, re-plug USB, and re-run `scripts/flash-ecrf-v2.sh`
+3. If the board shows as `usb-katapult_rp2040*`, Katapult is running but Klipper wasn't flashed — re-run the flash script
 
 ### Bridge can't connect to P1S
 1. Verify P1S is in LAN mode (Settings → LAN Mode on P1S LCD)

@@ -38,7 +38,7 @@ This project bridges Bambu's proprietary firmware and the open-source TradRack f
 |-----------|---------|
 | BambuLab P1S | 3D Printer (LAN mode enabled) |
 | Raspberry Pi 4 | Runs Klipper, Happy Hare, Moonraker, and the bridge |
-| Fly-ECRF-V2 | Stepper driver board (STM32F072, TMC2209, USB to Pi) |
+| Fly-ECRF-V2 | Stepper driver board (RP2040, TMC2209, USB to Pi) |
 | TradRack | Open-source filament changer (up to 8 slots) |
 | Binky Encoder | Filament motion sensor (12-tooth disc, connects to DIAG header on ECRF-V2) |
 
@@ -126,7 +126,7 @@ chmod +x scripts/flash-ecrf-v2.sh
 ./setup.sh
 ```
 
-The flash script automatically configures and builds Klipper firmware for STM32F072 with USB on PA11/PA12 (internal clock reference, no bootloader).
+The flash script flashes the Katapult USB bootloader via UF2, then compiles and flashes Klipper firmware for RP2040 (16KiB bootloader, USBSERIAL, gpio17 startup pin).
 
 ### 5. Configure the Bridge
 
@@ -199,7 +199,7 @@ The service starts after Klipper and Moonraker, and auto-restarts on failure.
 
 - Python 3.10+
 - Raspberry Pi 4 (or similar SBC)
-- Fly-ECRF-V2 board with Klipper MCU firmware (USB mode)
+- Fly-ECRF-V2 board with Klipper MCU firmware (RP2040, USB mode)
 - BambuLab P1S with LAN mode enabled
 - TradRack MMU hardware
 - Klipper + Happy Hare + Moonraker running on the Pi
