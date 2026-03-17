@@ -310,6 +310,53 @@ else
     echo "[WARN] Could not reach Moonraker. Is it running?"
 fi
 
+# ── 3c. KlipperScreen Happy Hare Edition ────────────────────
+
+echo
+echo "--- KlipperScreen Happy Hare Edition ---"
+
+KS_DIR="$HOME/KlipperScreen"
+KS_HH_ORIGIN="https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition.git"
+NUM_GATES=8
+
+if [ -d "$KS_DIR" ]; then
+    # Check if already on Happy Hare edition
+    KS_CURRENT_ORIGIN=$(git -C "$KS_DIR" remote get-url origin 2>/dev/null || echo "")
+    if echo "$KS_CURRENT_ORIGIN" | grep -qi "Happy-Hare-Edition"; then
+        echo "[OK] KlipperScreen Happy Hare Edition already installed"
+        # Re-run install_ks.sh in case of updates
+        if [ -f "$KS_DIR/happy_hare/install_ks.sh" ]; then
+            echo "Re-running Happy Hare KS installer (${NUM_GATES} gates)..."
+            cd "$KS_DIR/happy_hare"
+            ./install_ks.sh -g "$NUM_GATES"
+            cd "$SCRIPT_DIR"
+            echo "[OK] KlipperScreen Happy Hare panels updated"
+        fi
+    else
+        echo "Replacing stock KlipperScreen with Happy Hare Edition..."
+        # Back up the original
+        if [ ! -d "$KS_DIR.orig" ]; then
+            mv "$KS_DIR" "$KS_DIR.orig"
+            echo "[OK] Original KlipperScreen backed up to KlipperScreen.orig"
+        else
+            echo "[INFO] Backup already exists at KlipperScreen.orig — removing current"
+            rm -rf "$KS_DIR"
+        fi
+        # Clone Happy Hare edition
+        git clone "$KS_HH_ORIGIN" "$KS_DIR"
+        echo "[OK] KlipperScreen Happy Hare Edition cloned"
+
+        # Run the Happy Hare KS installer
+        cd "$KS_DIR/happy_hare"
+        ./install_ks.sh -g "$NUM_GATES"
+        cd "$SCRIPT_DIR"
+        echo "[OK] KlipperScreen Happy Hare panels installed (${NUM_GATES} gates)"
+    fi
+else
+    echo "[INFO] KlipperScreen not found — skipping Happy Hare KS install"
+    echo "       Install KlipperScreen first, then re-run this script."
+fi
+
 # ── 4. Python bridge setup ──────────────────────────────────
 
 echo
@@ -399,6 +446,7 @@ echo "  Installed:"
 echo "    - klipper-mcu host service"
 echo "    - printer.cfg (TradRack-only)"
 echo "    - fly-ecrf-v2-tradrack.cfg (pin reference)"
+echo "    - KlipperScreen Happy Hare Edition (MMU panels)"
 echo "    - Python venv + bridge dependencies"
 echo "    - tradrack-bridge.service (systemd, auto-starts on boot)"
 echo
