@@ -161,6 +161,30 @@ if [ -d "$PRINTER_DATA/config/mmu/base" ]; then
             sed -i "s|serial:.*|serial: ${ECRF_SERIAL}|" "$MMU_MCU"
             echo "[OK] Updated MMU MCU serial to $ECRF_SERIAL"
         fi
+
+        # Apply Fly-ECRF-V2 pin aliases if still using placeholders
+        if grep -q '{gear_uart_pin}' "$MMU_MCU" 2>/dev/null; then
+            echo "Applying Fly-ECRF-V2 pin aliases to mmu.cfg..."
+            sed -i 's|{gear_uart_pin}|PA9|g'          "$MMU_MCU"
+            sed -i 's|{gear_step_pin}|PA7|g'          "$MMU_MCU"
+            sed -i 's|{gear_dir_pin}|PA8|g'           "$MMU_MCU"
+            sed -i 's|{gear_enable_pin}|PA6|g'        "$MMU_MCU"
+            sed -i 's|{gear_diag_pin}|PA15|g'         "$MMU_MCU"
+            sed -i 's|{selector_uart_pin}|PA2|g'      "$MMU_MCU"
+            sed -i 's|{selector_step_pin}|PA4|g'      "$MMU_MCU"
+            sed -i 's|{selector_dir_pin}|PA3|g'       "$MMU_MCU"
+            sed -i 's|{selector_enable_pin}|PA5|g'    "$MMU_MCU"
+            sed -i 's|{selector_diag_pin}|PB4|g'      "$MMU_MCU"
+            sed -i 's|{selector_endstop_pin}|PB4|g'   "$MMU_MCU"
+            sed -i 's|{selector_servo_pin}|PB5|g'     "$MMU_MCU"
+            sed -i 's|{encoder_pin}|PA15|g'           "$MMU_MCU"
+            sed -i 's|{neopixel_pin}|PA14|g'          "$MMU_MCU"
+            sed -i 's|MCU type unknown|Fly-ECRF-V2 (STM32F072)|g' "$MMU_MCU"
+            echo "[OK] Fly-ECRF-V2 pin aliases applied"
+        else
+            echo "[OK] Pin aliases already configured"
+        fi
+
         # Enable Happy Hare includes
         sed -i 's|^# \[include mmu/base/\*\.cfg\]|\[include mmu/base/*.cfg\]|' "$PRINTER_CFG"
         sed -i 's|^# \[include mmu/optional/client_macros\.cfg\]|\[include mmu/optional/client_macros.cfg\]|' "$PRINTER_CFG"
@@ -319,10 +343,12 @@ if [ ! -d "$PRINTER_DATA/config/mmu/base" ]; then
 fi
 
 if [ -z "$ECRF_SERIAL" ]; then
-    echo "    2. Connect and flash Fly-ECRF-V2:"
-    echo "         cd ~/klipper && make menuconfig  # STM32F072, USB"
-    echo "         make && make flash FLASH_DEVICE=/dev/serial/by-id/usb-Klipper_..."
-    echo "       Then re-run this setup script to auto-detect the board."
+    echo "    2. Flash and connect Fly-ECRF-V2 (USB mode):"
+    echo "         Wiring docs: https://mellow.klipper.cn/en/docs/ProductDoc/ToolBoard/fly-ercf/ercfv2/wiring"
+    echo "         Set DIP switches to USB mode (see docs above)"
+    echo "         Hold BOOT button, plug USB-C into Pi, release BOOT"
+    echo "         cd ~/tradrack-to-bambu && ./scripts/flash-ecrf-v2.sh"
+    echo "         Unplug/replug USB, then re-run: ./setup.sh"
     echo
 fi
 
