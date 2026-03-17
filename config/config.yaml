@@ -59,10 +59,12 @@ filaments:
 
 # Bridge behavior
 bridge:
-  # How to detect filament changes from the P1S print stream
-  #   "m600"  - Watch for M600 filament change command
-  #   "pause" - Watch for print pause state (M601 or LCD pause)
-  trigger_mode: "m600"
+  # How to detect filament changes from the P1S
+  #   "auto"  - Recommended. Listens for both M600 commands and pause events.
+  #   "m600"  - Only react to M600 filament-change G-code commands
+  #   "pause" - Only react to print pause events
+  # Most users should leave this as "auto".
+  trigger_mode: "auto"
 
   # MQTT status polling interval (seconds)
   poll_interval: 1.0

@@ -50,7 +50,7 @@ class Bridge:
     """
 
     def __init__(self, bambu: BambuMQTTClient, happy_hare: HappyHareController,
-                 filament_map: dict, trigger_mode: str = "m600",
+                 filament_map: dict, trigger_mode: str = "auto",
                  auto_resume: bool = True, resume_delay: float = 3.0,
                  bambu_command_timeout: float = 30.0):
         self.bambu = bambu
@@ -123,7 +123,7 @@ class Bridge:
         elif self.trigger_mode == "pause":
             self.bambu.on_pause(self._handle_filament_change)
         else:
-            # Both modes — react to either
+            # "auto" (default) — react to either M600 or pause
             self.bambu.on_m600(self._handle_filament_change)
             self.bambu.on_pause(self._handle_filament_change)
 
