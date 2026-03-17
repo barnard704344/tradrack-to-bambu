@@ -185,6 +185,39 @@ if [ -d "$PRINTER_DATA/config/mmu/base" ]; then
             echo "[OK] Pin aliases already configured"
         fi
 
+        # Clean up placeholder pins the Fly-ECRF-V2 doesn't have
+        # (pre-gate sensors, post-gear sensors, espooler, gate sensor, extra gear motors —
+        # these are on larger boards like the Mellow EASY-BRD-CAN v2 but not on the ECRF-V2)
+        if grep -q '{pre_gate_\|{gear_[1-9]' "$MMU_MCU" 2>/dev/null; then
+            echo "Clearing placeholder pins not available on Fly-ECRF-V2..."
+            sed -i 's|{pre_gate_[0-9]*_pin}||g'              "$MMU_MCU"
+            sed -i 's|{gear_sensor_[0-9]*_pin}||g'           "$MMU_MCU"
+            sed -i 's|{espooler_rwd_[0-9]*_pin}||g'          "$MMU_MCU"
+            sed -i 's|{espooler_fwd_[0-9]*_pin}||g'          "$MMU_MCU"
+            sed -i 's|{espooler_en_[0-9]*_pin}||g'           "$MMU_MCU"
+            # TradRack uses 1 shared gear motor — clear extra gear motor placeholders (gear_1+)
+            sed -i 's|{gear_[1-9][0-9]*_[a-z_]*_pin}||g'     "$MMU_MCU"
+            echo "[OK] Cleared placeholder pins"
+        fi
+
+        # Comment out sensor entries that reference empty pins in mmu_hardware.cfg
+        # The Fly-ECRF-V2 only has: encoder, selector endstop, servo
+        # It does NOT have: pre-gate, post-gear, gate sensor, toolhead sensor, extruder sensor
+        if grep -q '^pre_gate_switch_pin_' "$MMU_HW" 2>/dev/null; then
+            echo "Commenting out sensors not available on Fly-ECRF-V2..."
+            sed -i 's|^pre_gate_switch_pin_|#pre_gate_switch_pin_|'   "$MMU_HW"
+            sed -i 's|^post_gear_switch_pin_|#post_gear_switch_pin_|' "$MMU_HW"
+            echo "[OK] Unavailable sensor pins commented out"
+        fi
+
+        # Apply TradRack-tuned defaults to mmu_parameters.cfg
+        # (from working Voron TradRack — see klipper/mmu_defaults_tradrack.cfg)
+        if grep -q "^form_tip_macro: _MMU_FORM_TIP" "$MMU_PARAMS" 2>/dev/null; then
+            echo "[OK] TradRack defaults already match"
+        elif grep -q "^form_tip_macro:" "$MMU_PARAMS" 2>/dev/null; then
+            echo "[OK] form_tip_macro already customized — not overwriting"
+        fi
+
         # Enable Happy Hare includes
         sed -i 's|^# \[include mmu/base/\*\.cfg\]|\[include mmu/base/*.cfg\]|' "$PRINTER_CFG"
         sed -i 's|^# \[include mmu/optional/client_macros\.cfg\]|\[include mmu/optional/client_macros.cfg\]|' "$PRINTER_CFG"
