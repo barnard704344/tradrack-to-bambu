@@ -73,6 +73,8 @@ class PrintState:
     nozzle_type: str = ""
     # Network
     wifi_signal: str = ""
+    # Light
+    chamber_light: bool = False
     # Errors
     print_error: int = 0
     hms: list = None  # health management system alerts
@@ -204,6 +206,22 @@ class BambuMQTTClient:
             "print": {
                 "command": "stop",
                 "sequence_id": str(int(time.time())),
+            }
+        })
+
+    def set_chamber_light(self, on: bool) -> bool:
+        """Turn the chamber light on or off."""
+        mode = "on" if on else "off"
+        return self._send_command({
+            "system": {
+                "sequence_id": str(int(time.time())),
+                "command": "ledctrl",
+                "led_node": "chamber_light",
+                "led_mode": mode,
+                "led_on_time": 500,
+                "led_off_time": 500,
+                "loop_times": 0,
+                "interval_time": 0,
             }
         })
 
@@ -340,6 +358,11 @@ class BambuMQTTClient:
                 self._state.print_error = data["print_error"]
             if "hms" in data:
                 self._state.hms = data["hms"]
+            # Chamber light
+            lights = data.get("lights_report", [])
+            for light in lights:
+                if light.get("node") == "chamber_light":
+                    self._state.chamber_light = light.get("mode") == "on"
 
         new_status = self._state.status
 

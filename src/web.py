@@ -11,7 +11,7 @@ import threading
 import time
 from typing import Optional
 
-from flask import Flask, Response, jsonify, render_template
+from flask import Flask, Response, jsonify, render_template, request
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +94,7 @@ def create_app(bambu_client, happy_hare, bridge=None, camera=None):
             "wifi_signal": p1s.wifi_signal,
             "print_error": p1s.print_error,
             "hms": p1s.hms or [],
+            "chamber_light": p1s.chamber_light,
         }
 
         # Happy Hare / Klipper state
@@ -123,6 +124,13 @@ def create_app(bambu_client, happy_hare, bridge=None, camera=None):
             "happy_hare": hh_data,
             "bridge": bridge_data,
         })
+
+    @app.route("/api/light/toggle", methods=["POST"])
+    def toggle_light():
+        """Toggle the P1S chamber light."""
+        current = bambu_client.state.chamber_light
+        ok = bambu_client.set_chamber_light(not current)
+        return jsonify({"ok": ok, "light": not current})
 
     return app
 

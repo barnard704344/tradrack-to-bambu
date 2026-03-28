@@ -142,12 +142,19 @@
   }
 
   /* Camera lightbox */
-  #camera-img { cursor: pointer; }
+  .cam-wrap { cursor: pointer; position: relative; }
+  .cam-wrap img { width: 100%; border-radius: 4px; background: #000; display: block; pointer-events: none; }
+  .cam-wrap::after {
+    content: '\2922';
+    position: absolute; top: 8px; right: 12px;
+    font-size: 1.4em; color: rgba(255,255,255,0.6);
+    pointer-events: none;
+  }
   .lightbox {
     display: none;
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.9);
+    background: rgba(0,0,0,0.92);
     z-index: 1000;
     align-items: center;
     justify-content: center;
@@ -158,7 +165,21 @@
     max-width: 95vw;
     max-height: 95vh;
     border-radius: 6px;
+    pointer-events: none;
   }
+
+  .toggle-btn {
+    background: var(--accent);
+    border: 1px solid var(--muted);
+    color: var(--text);
+    padding: 4px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85em;
+    font-weight: 600;
+  }
+  .toggle-btn:hover { border-color: var(--green); }
+  .toggle-btn.on { background: var(--green); color: var(--bg); border-color: var(--green); }
 
   /* HMS alerts */
   .alert {
@@ -252,6 +273,10 @@
       <span class="label">WiFi Signal</span>
       <span id="wifi" class="value">—</span>
     </div>
+    <div class="row">
+      <span class="label">Chamber Light</span>
+      <button class="toggle-btn" id="light-btn" onclick="toggleLight()">—</button>
+    </div>
   </div>
 
   <!-- Bridge -->
@@ -308,15 +333,12 @@
 
   <!-- Camera -->
   {% if camera_enabled %}
-  <div class="card" style="grid-column: span 1;">
+  <div class="card">
     <h2>Camera</h2>
-    <img id="camera-img" src="/api/camera/stream"
-         style="width:100%; border-radius:4px; background:#000;"
-         onerror="this.alt='Camera stream unavailable'"
-         onclick="document.getElementById('lightbox').classList.add('open')">
-  </div>
-  <div id="lightbox" class="lightbox" onclick="this.classList.remove('open')">
-    <img src="/api/camera/stream">
+    <div class="cam-wrap" id="cam-open">
+      <img id="camera-img" src="/api/camera/stream"
+           onerror="this.alt='Camera stream unavailable'">
+    </div>
   </div>
   {% endif %}
 
@@ -329,11 +351,39 @@
 
 <div class="updated" id="updated">—</div>
 
+{% if camera_enabled %}
+<div id="lightbox" class="lightbox">
+  <img src="/api/camera/stream">
+</div>
+{% endif %}
+
 <script>
+// Camera lightbox
+(function() {
+  var open = document.getElementById('cam-open');
+  var lb = document.getElementById('lightbox');
+  if (open && lb) {
+    open.addEventListener('click', function() { lb.classList.add('open'); });
+    lb.addEventListener('click', function() { lb.classList.remove('open'); });
+  }
+})();
+
 function fanPct(v) {
   const n = parseInt(v, 10);
   if (isNaN(n)) return v;
   return Math.round(n / 15 * 100) + '%';
+}
+
+function toggleLight() {
+  var btn = document.getElementById('light-btn');
+  btn.disabled = true;
+  fetch('/api/light/toggle', {method: 'POST'})
+    .then(r => r.json())
+    .then(d => {
+      btn.textContent = d.light ? 'ON' : 'OFF';
+      btn.className = 'toggle-btn' + (d.light ? ' on' : '');
+    })
+    .finally(() => { btn.disabled = false; });
 }
 
 function formatEta(min) {
@@ -385,6 +435,11 @@ function update() {
       document.getElementById('fan-aux1').textContent = fanPct(p.big_fan1_speed);
       document.getElementById('fan-aux2').textContent = fanPct(p.big_fan2_speed);
       document.getElementById('wifi').textContent = p.wifi_signal || '—';
+
+      // Chamber light
+      var lbtn = document.getElementById('light-btn');
+      lbtn.textContent = p.chamber_light ? 'ON' : 'OFF';
+      lbtn.className = 'toggle-btn' + (p.chamber_light ? ' on' : '');
 
       // Bridge
       if (b && b.state) {
