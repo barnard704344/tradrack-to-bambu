@@ -215,6 +215,92 @@ class HappyHareController:
         except Exception:
             return {}
 
+    def get_extended_status(self) -> dict:
+        """Get full MMU status including gate map, sensors, encoder etc."""
+        try:
+            resp = self._get(
+                "/printer/objects/query",
+                params={"mmu": ""}
+            )
+            mmu = resp.get("result", {}).get("status", {}).get("mmu", {})
+            if not mmu:
+                return {"connected": False}
+
+            num_gates = mmu.get("num_gates", self.num_gates)
+            gates = []
+            gate_status = mmu.get("gate_status", [])
+            gate_material = mmu.get("gate_material", [])
+            gate_color = mmu.get("gate_color", [])
+            gate_filament_name = mmu.get("gate_filament_name", [])
+            gate_spool_id = mmu.get("gate_spool_id", [])
+            gate_temperature = mmu.get("gate_temperature", [])
+            gate_speed_override = mmu.get("gate_speed_override", [])
+            ttg_map = mmu.get("ttg_map", [])
+
+            for i in range(num_gates):
+                gates.append({
+                    "index": i,
+                    "status": gate_status[i] if i < len(gate_status) else 0,
+                    "material": gate_material[i] if i < len(gate_material) else "",
+                    "color": gate_color[i] if i < len(gate_color) else "",
+                    "filament_name": gate_filament_name[i] if i < len(gate_filament_name) else "",
+                    "spool_id": gate_spool_id[i] if i < len(gate_spool_id) else -1,
+                    "temperature": gate_temperature[i] if i < len(gate_temperature) else 0,
+                    "speed_override": gate_speed_override[i] if i < len(gate_speed_override) else 100,
+                    "mapped_tool": ttg_map.index(i) if i in ttg_map else -1,
+                })
+
+            encoder = mmu.get("encoder", {})
+            sensors = mmu.get("sensors", {})
+
+            return {
+                "connected": True,
+                "enabled": mmu.get("enabled", False),
+                "is_homed": mmu.get("is_homed", False),
+                "action": mmu.get("action", "Unknown"),
+                "print_state": mmu.get("print_state", ""),
+                "tool": mmu.get("tool", -1),
+                "gate": mmu.get("gate", -1),
+                "filament": mmu.get("filament", "Unknown"),
+                "filament_position": round(mmu.get("filament_position", 0), 1),
+                "filament_direction": mmu.get("filament_direction", 0),
+                "servo": mmu.get("servo", "Unknown"),
+                "sync_drive": mmu.get("sync_drive", False),
+                "reason_for_pause": mmu.get("reason_for_pause", ""),
+                "num_toolchanges": mmu.get("num_toolchanges", 0),
+                "last_tool": mmu.get("last_tool", -1),
+                "next_tool": mmu.get("next_tool", -1),
+                "bowden_progress": mmu.get("bowden_progress", -1),
+                "num_gates": num_gates,
+                "gates": gates,
+                "ttg_map": ttg_map,
+                "encoder": {
+                    "position": round(encoder.get("encoder_pos", 0), 1),
+                    "flow_rate": round(encoder.get("flow_rate", 0), 1),
+                    "headroom": round(encoder.get("headroom", 0), 1),
+                    "enabled": encoder.get("enabled", False),
+                },
+                "sensors": sensors,
+            }
+        except Exception as e:
+            logger.error(f"Failed to get extended MMU status: {e}")
+            return {"connected": False}
+
+    def recover(self) -> bool:
+        """Recover MMU from pause/error state."""
+        logger.info("Recovering MMU")
+        return self._run_gcode("MMU_RECOVER")
+
+    def load_filament(self) -> bool:
+        """Load filament on current gate."""
+        logger.info("Loading filament")
+        return self._run_gcode("MMU_LOAD")
+
+    def unload_filament(self) -> bool:
+        """Unload filament."""
+        logger.info("Unloading filament")
+        return self._run_gcode("MMU_UNLOAD")
+
     def _run_gcode(self, gcode: str) -> bool:
         """Execute a G-code command/macro via Moonraker."""
         try:

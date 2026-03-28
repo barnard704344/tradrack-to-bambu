@@ -57,7 +57,12 @@ tradrack-to-bambu/
 │   ├── happy_hare.py              # Happy Hare controller (Moonraker API)
 │   ├── gcode_processor.py         # G-code scanner (extracts tool sequence)
 │   ├── bridge.py                  # Orchestration coordinator
+│   ├── web.py                     # Flask web UI (dashboard + API)
+│   ├── camera.py                  # P1S camera stream client (TLS/JPEG)
 │   └── config.py                  # Configuration loader
+├── templates/
+│   ├── dashboard.html             # Live dashboard (auto-refreshing)
+│   └── mmu.html                   # MMU controls & gate map page
 ├── klipper/
 │   ├── printer.cfg                # Minimal Klipper config (TradRack-only, no real printer)
 │   └── fly-ecrf-v2-tradrack.cfg   # Fly-ECRF-V2 pin reference for Happy Hare
@@ -187,6 +192,11 @@ See [config/config.yaml](config/config.yaml) for all settings. Key items:
 - **bridge.trigger_mode** — `"auto"` (default, listens for both M600 and pause events), `"m600"`, or `"pause"`
 - **bridge.klipper_retry_interval** — Seconds between retries when waiting for Klipper during a tool change (default: 10)
 - **bridge.klipper_retry_timeout** — Max seconds to wait for Klipper before failing a tool change, 0 = wait forever (default: 300)
+- **web.enabled** — Enable/disable the web dashboard (default: true)
+- **web.host** — Web UI listen address (default: `0.0.0.0`)
+- **web.port** — Web UI port (default: 5000)
+- **camera.enabled** — Enable/disable the P1S camera stream proxy (default: true)
+- **camera.port** — P1S camera port (default: 6000)
 - **filament_map** — Maps Orca Slicer tool numbers to TradRack gate numbers
 
 > **Note:** The bridge is independent of Klipper at startup. It only requires happy_hare_connection to the P1S to start
@@ -213,6 +223,50 @@ To view detailed MQTT and debug output, tail the log file:
 ```bash
 tail -f ~/tradrack-to-bambu/logs/bridge.log
 ```
+
+## Web Dashboard
+
+The bridge includes a live web dashboard accessible at `http://<pi-ip>:5000`.
+
+**Features:**
+- **P1S Status** — Print progress, job name, layer count, ETA, speed
+- **Temperatures** — Nozzle, bed, chamber (live updates)
+- **Fans** — Part cooling, heatbreak, aux fans
+- **Chamber Light** — Toggle the P1S chamber light on/off
+- **Bridge State** — Tool change count, current tool, sequence position
+- **Happy Hare / TradRack** — MMU state, gate status visualisation
+- **Camera** — Live video feed from the P1S chamber camera (click to enlarge)
+- **HMS Alerts** — Health Management System alerts from the P1S
+
+### MMU Controls (`/mmu`)
+
+- **Status** — MMU action, tool/gate, filament state, servo position, bowden progress
+- **Encoder** — Position, flow rate, headroom
+- **Sensors** — Color-coded sensor chips (filament detected / empty / disabled)
+- **Controls** — Home, Load, Unload, Eject, Servo Up/Down, Recover, Select Gate, Change Tool
+- **Gate Map** — Table with tool mapping, status, color swatch, material, filament name, temperature, spool ID
+
+All data auto-refreshes every 2 seconds. The camera feed is proxied as an MJPEG stream.
+
+### API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | Bridge dashboard |
+| `/mmu` | GET | MMU controls & gate map page |
+| `/api/status` | GET | Full system status (JSON) |
+| `/api/mmu/status` | GET | Extended MMU status (JSON) |
+| `/api/mmu/home` | POST | Home the MMU selector |
+| `/api/mmu/select` | POST | Select a gate (`{"gate": 0}`) |
+| `/api/mmu/change_tool` | POST | Full tool change (`{"tool": 0}`) |
+| `/api/mmu/load` | POST | Load filament on current gate |
+| `/api/mmu/unload` | POST | Unload filament |
+| `/api/mmu/eject` | POST | Eject filament |
+| `/api/mmu/servo` | POST | Servo control (`{"pos": "up"}` or `"down"`) |
+| `/api/mmu/recover` | POST | Recover MMU from pause/error |
+| `/api/light/toggle` | POST | Toggle chamber light on/off |
+| `/api/camera/stream` | GET | MJPEG video stream |
+| `/api/camera/snapshot` | GET | Single JPEG frame |
 
 ## Requirements
 

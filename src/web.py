@@ -132,6 +132,73 @@ def create_app(bambu_client, happy_hare, bridge=None, camera=None):
         ok = bambu_client.set_chamber_light(not current)
         return jsonify({"ok": ok, "light": not current})
 
+    # --- MMU Page ---
+
+    @app.route("/mmu")
+    def mmu_page():
+        return render_template("mmu.html")
+
+    @app.route("/api/mmu/status")
+    def mmu_status():
+        """Full MMU status for the MMU dashboard."""
+        try:
+            data = happy_hare.get_extended_status()
+        except Exception:
+            data = {"connected": False}
+        return jsonify(data)
+
+    @app.route("/api/mmu/home", methods=["POST"])
+    def mmu_home():
+        ok = happy_hare.home()
+        return jsonify({"ok": ok})
+
+    @app.route("/api/mmu/select", methods=["POST"])
+    def mmu_select():
+        gate = request.json.get("gate")
+        if gate is None:
+            return jsonify({"ok": False, "error": "gate required"}), 400
+        ok = happy_hare.select_gate(int(gate))
+        return jsonify({"ok": ok})
+
+    @app.route("/api/mmu/change_tool", methods=["POST"])
+    def mmu_change_tool():
+        tool = request.json.get("tool")
+        if tool is None:
+            return jsonify({"ok": False, "error": "tool required"}), 400
+        ok = happy_hare.change_tool(int(tool))
+        return jsonify({"ok": ok})
+
+    @app.route("/api/mmu/load", methods=["POST"])
+    def mmu_load():
+        ok = happy_hare.load_filament()
+        return jsonify({"ok": ok})
+
+    @app.route("/api/mmu/unload", methods=["POST"])
+    def mmu_unload():
+        ok = happy_hare.unload_filament()
+        return jsonify({"ok": ok})
+
+    @app.route("/api/mmu/eject", methods=["POST"])
+    def mmu_eject():
+        ok = happy_hare.eject_filament()
+        return jsonify({"ok": ok})
+
+    @app.route("/api/mmu/servo", methods=["POST"])
+    def mmu_servo():
+        pos = request.json.get("pos")
+        if pos == "up":
+            ok = happy_hare.servo_up()
+        elif pos == "down":
+            ok = happy_hare.servo_down()
+        else:
+            return jsonify({"ok": False, "error": "pos must be 'up' or 'down'"}), 400
+        return jsonify({"ok": ok})
+
+    @app.route("/api/mmu/recover", methods=["POST"])
+    def mmu_recover():
+        ok = happy_hare.recover()
+        return jsonify({"ok": ok})
+
     return app
 
 
