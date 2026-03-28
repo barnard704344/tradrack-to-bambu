@@ -52,7 +52,9 @@ class Bridge:
     def __init__(self, bambu: BambuMQTTClient, happy_hare: HappyHareController,
                  filament_map: dict, trigger_mode: str = "auto",
                  auto_resume: bool = True, resume_delay: float = 3.0,
-                 bambu_command_timeout: float = 30.0):
+                 bambu_command_timeout: float = 30.0,
+                 klipper_retry_interval: float = 10.0,
+                 klipper_retry_timeout: float = 300.0):
         self.bambu = bambu
         self.happy_hare = happy_hare
         self.filament_map = filament_map  # {"T0": 0, "T1": 1, ...}
@@ -60,6 +62,8 @@ class Bridge:
         self.auto_resume = auto_resume
         self.resume_delay = resume_delay
         self.bambu_command_timeout = bambu_command_timeout
+        self.klipper_retry_interval = klipper_retry_interval
+        self.klipper_retry_timeout = klipper_retry_timeout
 
         self._state = BridgeState.IDLE
         self._tool_sequence: list[int] = []  # ordered tool changes from G-code
@@ -105,9 +109,11 @@ class Bridge:
             logger.error("Cannot start bridge: not connected to P1S")
             return
 
-        if not self.happy_hare.check_connection():
-            logger.error("Cannot start bridge: Happy Hare/Moonraker not reachable")
-            return
+        # Log Happy Hare status but don't require it to start
+        if self.happy_hare.check_connection():
+            logger.info("Happy Hare/Klipper is available")
+        else:
+            logger.warning("Happy Hare/Klipper not available yet — will wait when needed")
 
         # Auto-fetch and scan G-code from P1S if no sequence loaded yet
         if not self._sequence_loaded:
@@ -164,6 +170,25 @@ class Bridge:
                 logger.info(f"Bridge state: {self._state.value} -> {state.value}")
                 self._state = state
 
+    def _wait_for_klipper(self) -> bool:
+        """Wait for Klipper/Happy Hare to become available. Returns True if ready."""
+        if self.happy_hare.check_connection():
+            return True
+
+        logger.warning("Klipper/Happy Hare not available, waiting...")
+        start_time = time.time()
+        while not self._stop_event.is_set():
+            elapsed = time.time() - start_time
+            if self.klipper_retry_timeout and elapsed >= self.klipper_retry_timeout:
+                logger.error(f"Klipper not ready after {self.klipper_retry_timeout}s, giving up")
+                return False
+            logger.info(f"Waiting for Klipper... ({int(elapsed)}s elapsed)")
+            self._stop_event.wait(timeout=self.klipper_retry_interval)
+            if self.happy_hare.check_connection():
+                logger.info("Klipper/Happy Hare is now available")
+                return True
+        return False
+
     def _handle_filament_change(self):
         """
         Called when M600/pause is detected on the P1S.
@@ -184,6 +209,13 @@ class Bridge:
 
         gate = self.filament_map.get(f"T{next_tool}", next_tool)
         logger.info(f"Filament change #{self._tool_index}: T{next_tool} -> gate {gate}")
+
+        # Ensure Klipper is available before attempting tool change
+        if not self._wait_for_klipper():
+            self._tool_changes_failed += 1
+            logger.error(f"Cannot change to T{next_tool}: Klipper/Happy Hare unavailable")
+            self._set_state(BridgeState.ERROR)
+            return
 
         # Execute tool change via Happy Hare
         success = self.happy_hare.change_tool(gate)

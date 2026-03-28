@@ -154,9 +154,8 @@ journalctl -u tradrack-bridge -f
 Or run manually for debugging:
 ```bash
 cd ~/tradrack-to-bambu
-source venv/bin/activate
-python -m src.main status    # check connectivity
-python -m src.main bridge    # run in foreground
+./venv/bin/python -m src.main status    # check connectivity
+./venv/bin/python -m src.main bridge    # run in foreground
 ```
 
 ## CLI Commands
@@ -164,11 +163,18 @@ python -m src.main bridge    # run in foreground
 | Command | Description |
 |---------|-------------|
 | `bridge` | Run real-time bridge (auto-fetches G-code, monitors P1S, handles tool changes) |
+| `bridge --mqtt-log` | Same as above, but prints raw MQTT messages from P1S to console |
 | `scan <file>` | Scan a G-code file to verify tool-change sequence |
 | `status` | Check connectivity to P1S and Happy Hare |
 | `test <tool>` | Test a tool change via Happy Hare (0-7) |
 
 All commands accept `-c path/to/config.yaml` (default: `config/config.yaml`).
+
+All commands should be run with the project venv:
+```bash
+cd ~/tradrack-to-bambu
+./venv/bin/python -m src.main <command>
+```
 
 ## Configuration
 
@@ -179,7 +185,13 @@ See [config/config.yaml](config/config.yaml) for all settings. Key items:
 - **bambu.serial** — Printer serial (from P1S LCD: Settings → Device Info)
 - **happy_hare.num_gates** — Number of TradRack filament slots (1–8)
 - **bridge.trigger_mode** — `"auto"` (default, listens for both M600 and pause events), `"m600"`, or `"pause"`
+- **bridge.klipper_retry_interval** — Seconds between retries when waiting for Klipper during a tool change (default: 10)
+- **bridge.klipper_retry_timeout** — Max seconds to wait for Klipper before failing a tool change, 0 = wait forever (default: 300)
 - **filament_map** — Maps Orca Slicer tool numbers to TradRack gate numbers
+
+> **Note:** The bridge is independent of Klipper at startup. It only requires happy_hare_connection to the P1S to start
+> monitoring. If Klipper/Happy Hare is unavailable when a tool change is needed, the bridge will
+> wait and retry automatically (the P1S print stays paused until the tool change completes).
 
 ## Systemd Service
 
@@ -194,6 +206,13 @@ journalctl -u tradrack-bridge -f         # follow logs
 ```
 
 The service starts after Klipper and Moonraker, and auto-restarts on failure.
+The bridge does **not** require Klipper to be running — it will start and monitor the P1S
+regardless, and wait for Klipper/Happy Hare only when a tool change is triggered.
+
+To view detailed MQTT and debug output, tail the log file:
+```bash
+tail -f ~/tradrack-to-bambu/logs/bridge.log
+```
 
 ## Requirements
 

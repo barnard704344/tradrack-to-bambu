@@ -7,11 +7,11 @@
 # BambuLab P1S LAN Mode Settings
 bambu:
   # Printer IP address on your local network
-  host: "192.168.1.100"
+  host: "192.168.1.57"
   # Access code from printer LCD: Settings -> LAN Mode
-  access_code: "your_access_code"
+  access_code: "32770268"
   # Serial number from printer LCD: Settings -> Device Info
-  serial: "your_serial_number"
+  serial: "01P00C572402683"
   # MQTT port (default 8883 for TLS)
   mqtt_port: 8883
   # FTP port for G-code upload (FTPS)
@@ -77,6 +77,12 @@ bridge:
 
   # Timeout for P1S to acknowledge pause/resume commands (seconds)
   bambu_command_timeout: 30
+
+  # Seconds between retries when waiting for Klipper/Happy Hare during a tool change
+  klipper_retry_interval: 10
+
+  # Max seconds to wait for Klipper before giving up on a tool change (0 = wait forever)
+  klipper_retry_timeout: 300
 
 # Logging
 logging:

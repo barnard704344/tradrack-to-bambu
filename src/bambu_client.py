@@ -87,6 +87,9 @@ class BambuMQTTClient:
         self._report_topic = f"device/{self.serial}/report"
         self._request_topic = f"device/{self.serial}/request"
 
+        # When True, print raw MQTT payloads to console
+        self.mqtt_log = False
+
     @property
     def state(self) -> PrintState:
         with self._state_lock:
@@ -232,6 +235,9 @@ class BambuMQTTClient:
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             logger.warning(f"Failed to decode MQTT message: {e}")
             return
+
+        if self.mqtt_log:
+            print(json.dumps(payload, indent=2))
 
         # The P1S sends various message types; we care about "print" reports
         if "print" not in payload:

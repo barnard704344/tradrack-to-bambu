@@ -99,6 +99,8 @@ def get_filament_map(config: dict) -> dict:
 def cmd_bridge(args, config: dict):
     """Run the real-time bridge: monitor P1S, auto-handle tool changes via Happy Hare."""
     bambu = create_bambu_client(config)
+    if args.mqtt_log:
+        bambu.mqtt_log = True
     happy_hare = create_happy_hare(config)
     filament_map = get_filament_map(config)
     bridge_cfg = config["bridge"]
@@ -111,6 +113,8 @@ def cmd_bridge(args, config: dict):
         auto_resume=bridge_cfg.get("auto_resume", True),
         resume_delay=bridge_cfg.get("resume_delay", 3.0),
         bambu_command_timeout=bridge_cfg.get("bambu_command_timeout", 30),
+        klipper_retry_interval=bridge_cfg.get("klipper_retry_interval", 10),
+        klipper_retry_timeout=bridge_cfg.get("klipper_retry_timeout", 300),
     )
 
     # Connect to P1S
@@ -120,16 +124,14 @@ def cmd_bridge(args, config: dict):
         sys.exit(1)
     print("Connected to P1S!")
 
-    # Verify Happy Hare
+    # Check Happy Hare (informational only — bridge runs without it)
     print("Checking Happy Hare / Moonraker...")
-    if not happy_hare.check_connection():
-        print("Cannot reach Happy Hare/Moonraker. Is Klipper running?")
-        bambu.disconnect()
-        sys.exit(1)
-
-    mmu_status = happy_hare.get_status()
-    print(f"Happy Hare ready! Current tool: T{mmu_status.current_tool}, "
-          f"Filament loaded: {mmu_status.filament_loaded}")
+    if happy_hare.check_connection():
+        mmu_status = happy_hare.get_status()
+        print(f"Happy Hare ready! Current tool: T{mmu_status.current_tool}, "
+              f"Filament loaded: {mmu_status.filament_loaded}")
+    else:
+        print("Happy Hare/Klipper not available yet — bridge will wait for it when needed.")
 
     # Start bridge — it will auto-fetch G-code from P1S when a print starts
     bridge.start()
@@ -245,7 +247,11 @@ def main():
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # bridge command
-    subparsers.add_parser("bridge", help="Run the real-time bridge (auto-fetches G-code from P1S)")
+    bridge_parser = subparsers.add_parser("bridge", help="Run the real-time bridge (auto-fetches G-code from P1S)")
+    bridge_parser.add_argument(
+        "--mqtt-log", action="store_true",
+        help="Print raw MQTT messages from P1S to the console",
+    )
 
     # scan command
     scan_parser = subparsers.add_parser("scan", help="Scan a G-code file to verify tool-change sequence")
