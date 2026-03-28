@@ -21,9 +21,11 @@ import yaml
 
 from .bambu_client import BambuMQTTClient
 from .bridge import Bridge
+from .camera import BambuCamera
 from .config import load_config
 from .gcode_processor import GCodeScanner
 from .happy_hare import HappyHareController
+from .web import create_app, start_web_server
 
 logger = logging.getLogger("tradrack_bridge")
 
@@ -133,6 +135,27 @@ def cmd_bridge(args, config: dict):
     else:
         print("Happy Hare/Klipper not available yet — bridge will wait for it when needed.")
 
+    # Start camera stream
+    camera = None
+    cam_cfg = config.get("camera", {})
+    if cam_cfg.get("enabled", True):
+        camera = BambuCamera(
+            host=config["bambu"]["host"],
+            access_code=config["bambu"]["access_code"],
+            port=cam_cfg.get("port", 6000),
+        )
+        camera.start()
+        print("Camera stream started")
+
+    # Start web UI
+    web_cfg = config.get("web", {})
+    if web_cfg.get("enabled", True):
+        web_host = web_cfg.get("host", "0.0.0.0")
+        web_port = web_cfg.get("port", 5000)
+        app = create_app(bambu, happy_hare, bridge, camera)
+        start_web_server(app, host=web_host, port=web_port)
+        print(f"Web UI: http://{web_host}:{web_port}")
+
     # Start bridge — it will auto-fetch G-code from P1S when a print starts
     bridge.start()
     print("\n=== Bridge is running ===")
@@ -182,10 +205,27 @@ def cmd_status(args, config: dict):
     print(f"[P1S] Connecting to {config['bambu']['host']}:{config['bambu'].get('mqtt_port', 8883)}...")
     bambu = create_bambu_client(config)
     if bambu.connect(timeout=5):
+        # Give it a moment to receive the full status dump
+        time.sleep(2)
         state = bambu.state
         print(f"[P1S] Connected! Status: {state.status.value}")
         if state.subtask_name:
             print(f"[P1S] Current job: {state.subtask_name} ({state.mc_percent}%)")
+            print(f"[P1S] Layer: {state.layer_num}/{state.total_layers} | "
+                  f"ETA: {state.mc_remaining_time}min")
+        print(f"[P1S] Bed: {state.bed_temper:.1f}/{state.bed_target_temper:.1f}°C | "
+              f"Nozzle: {state.nozzle_temper:.1f}/{state.nozzle_target_temper:.1f}°C | "
+              f"Chamber: {state.chamber_temper:.1f}°C")
+        print(f"[P1S] Fans — Part: {state.cooling_fan_speed} | "
+              f"Heatbreak: {state.heatbreak_fan_speed} | "
+              f"Aux: {state.big_fan1_speed}/{state.big_fan2_speed}")
+        if state.nozzle_diameter:
+            print(f"[P1S] Nozzle: {state.nozzle_diameter}mm {state.nozzle_type}")
+        print(f"[P1S] Speed: {state.spd_mag}% | WiFi: {state.wifi_signal}")
+        if state.print_error:
+            print(f"[P1S] Print error code: {state.print_error}")
+        if state.hms:
+            print(f"[P1S] HMS alerts: {len(state.hms)}")
         bambu.disconnect()
     else:
         print("[P1S] Connection FAILED. Check IP and access code.")

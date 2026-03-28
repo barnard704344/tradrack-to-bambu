@@ -54,7 +54,33 @@ class PrintState:
     hw_switch_state: int = 0  # filament sensor
     mc_print_error_code: str = "0"
     mc_print_sub_stage: int = 0
+    # Temperatures
+    bed_temper: float = 0.0
+    bed_target_temper: float = 0.0
+    nozzle_temper: float = 0.0
+    nozzle_target_temper: float = 0.0
+    chamber_temper: float = 0.0
+    # Fans (speed as string like "15" meaning 100*15/15 or percentage)
+    cooling_fan_speed: str = "0"
+    heatbreak_fan_speed: str = "0"
+    big_fan1_speed: str = "0"
+    big_fan2_speed: str = "0"
+    # Speed
+    spd_lvl: int = 1  # speed level (1=silent,2=standard,3=sport,4=ludicrous)
+    spd_mag: int = 100  # speed magnitude percentage
+    # Nozzle
+    nozzle_diameter: str = ""
+    nozzle_type: str = ""
+    # Network
+    wifi_signal: str = ""
+    # Errors
+    print_error: int = 0
+    hms: list = None  # health management system alerts
     raw_data: dict = field(default_factory=dict)
+
+    def __post_init__(self):
+        if self.hms is None:
+            self.hms = []
 
 
 class BambuMQTTClient:
@@ -276,6 +302,44 @@ class BambuMQTTClient:
                 self._state.mc_print_error_code = str(data["mc_print_error_code"])
             if "mc_print_sub_stage" in data:
                 self._state.mc_print_sub_stage = data["mc_print_sub_stage"]
+            # Temperatures
+            if "bed_temper" in data:
+                self._state.bed_temper = data["bed_temper"]
+            if "bed_target_temper" in data:
+                self._state.bed_target_temper = data["bed_target_temper"]
+            if "nozzle_temper" in data:
+                self._state.nozzle_temper = data["nozzle_temper"]
+            if "nozzle_target_temper" in data:
+                self._state.nozzle_target_temper = data["nozzle_target_temper"]
+            if "chamber_temper" in data:
+                self._state.chamber_temper = data["chamber_temper"]
+            # Fans
+            if "cooling_fan_speed" in data:
+                self._state.cooling_fan_speed = str(data["cooling_fan_speed"])
+            if "heatbreak_fan_speed" in data:
+                self._state.heatbreak_fan_speed = str(data["heatbreak_fan_speed"])
+            if "big_fan1_speed" in data:
+                self._state.big_fan1_speed = str(data["big_fan1_speed"])
+            if "big_fan2_speed" in data:
+                self._state.big_fan2_speed = str(data["big_fan2_speed"])
+            # Speed
+            if "spd_lvl" in data:
+                self._state.spd_lvl = data["spd_lvl"]
+            if "spd_mag" in data:
+                self._state.spd_mag = data["spd_mag"]
+            # Nozzle
+            if "nozzle_diameter" in data:
+                self._state.nozzle_diameter = str(data["nozzle_diameter"])
+            if "nozzle_type" in data:
+                self._state.nozzle_type = str(data["nozzle_type"])
+            # Network
+            if "wifi_signal" in data:
+                self._state.wifi_signal = str(data["wifi_signal"])
+            # Errors
+            if "print_error" in data:
+                self._state.print_error = data["print_error"]
+            if "hms" in data:
+                self._state.hms = data["hms"]
 
         new_status = self._state.status
 

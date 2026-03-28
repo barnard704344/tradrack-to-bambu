@@ -320,10 +320,13 @@ class Bridge:
 
     def _on_state_change(self, state):
         """Handle P1S state changes — auto-fetch on print start + diagnostics."""
-        logger.debug(
+        logger.info(
             f"P1S: {state.status.value} | "
             f"{state.mc_percent}% | layer {state.layer_num}/{state.total_layers} | "
-            f"ETA {state.mc_remaining_time}min"
+            f"ETA {state.mc_remaining_time}min | "
+            f"bed {state.bed_temper:.1f}/{state.bed_target_temper:.1f}°C | "
+            f"nozzle {state.nozzle_temper:.1f}/{state.nozzle_target_temper:.1f}°C | "
+            f"chamber {state.chamber_temper:.1f}°C"
         )
 
     def _print_final_stats(self):

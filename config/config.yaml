@@ -84,6 +84,17 @@ bridge:
   # Max seconds to wait for Klipper before giving up on a tool change (0 = wait forever)
   klipper_retry_timeout: 300
 
+# Web UI dashboard
+web:
+  enabled: true
+  host: "0.0.0.0"  # listen on all interfaces
+  port: 5000
+
+# Camera feed from P1S (proxied as MJPEG)
+camera:
+  enabled: true
+  port: 6000  # P1S camera stream port
+
 # Logging
 logging:
   level: "INFO"  # DEBUG, INFO, WARNING, ERROR

@@ -1,0 +1,19 @@
+Looking in indexes: https://pypi.org/simple, https://www.piwheels.org/simple
+Collecting flask
+  Downloading https://www.piwheels.org/simple/flask/flask-3.1.3-py3-none-any.whl (103 kB)
+Collecting blinker>=1.9.0 (from flask)
+  Downloading https://www.piwheels.org/simple/blinker/blinker-1.9.0-py3-none-any.whl (8.5 kB)
+Collecting click>=8.1.3 (from flask)
+  Downloading https://www.piwheels.org/simple/click/click-8.3.1-py3-none-any.whl (108 kB)
+Collecting itsdangerous>=2.2.0 (from flask)
+  Downloading https://www.piwheels.org/simple/itsdangerous/itsdangerous-2.2.0-py3-none-any.whl (16 kB)
+Collecting jinja2>=3.1.2 (from flask)
+  Downloading https://www.piwheels.org/simple/jinja2/jinja2-3.1.6-py3-none-any.whl (134 kB)
+Collecting markupsafe>=2.1.1 (from flask)
+  Downloading markupsafe-3.0.3-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl.metadata (2.7 kB)
+Collecting werkzeug>=3.1.0 (from flask)
+  Downloading https://www.piwheels.org/simple/werkzeug/werkzeug-3.1.7-py3-none-any.whl (226 kB)
+Downloading markupsafe-3.0.3-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl (24 kB)
+Installing collected packages: markupsafe, itsdangerous, click, blinker, werkzeug, jinja2, flask
+
+Successfully installed blinker-1.9.0 click-8.3.1 flask-3.1.3 itsdangerous-2.2.0 jinja2-3.1.6 markupsafe-3.0.3 werkzeug-3.1.7

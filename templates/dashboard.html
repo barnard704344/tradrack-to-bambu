@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TradRack Bridge</title>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --card: #16213e;
+    --accent: #0f3460;
+    --text: #e4e4e4;
+    --muted: #8892a4;
+    --green: #4ecca3;
+    --red: #e74c3c;
+    --orange: #f39c12;
+    --blue: #3498db;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+    background: var(--bg);
+    color: var(--text);
+    padding: 16px;
+    min-height: 100vh;
+  }
+  h1 {
+    font-size: 1.4em;
+    margin-bottom: 16px;
+    color: var(--green);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  h1 .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--muted);
+    display: inline-block;
+  }
+  h1 .dot.ok { background: var(--green); }
+  h1 .dot.err { background: var(--red); }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 12px;
+  }
+  .card {
+    background: var(--card);
+    border-radius: 8px;
+    padding: 16px;
+    border: 1px solid var(--accent);
+  }
+  .card h2 {
+    font-size: 0.9em;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--accent);
+    padding-bottom: 6px;
+  }
+  .row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    font-size: 0.95em;
+  }
+  .row .label { color: var(--muted); }
+  .row .value { font-weight: 600; }
+  .temp { color: var(--orange); }
+  .fan { color: var(--blue); }
+  .ok { color: var(--green); }
+  .err { color: var(--red); }
+  .warn { color: var(--orange); }
+
+  /* Progress bar */
+  .progress-wrap {
+    background: var(--accent);
+    border-radius: 4px;
+    height: 22px;
+    margin: 8px 0;
+    position: relative;
+    overflow: hidden;
+  }
+  .progress-bar {
+    height: 100%;
+    background: var(--green);
+    border-radius: 4px;
+    transition: width 0.5s ease;
+    min-width: 0;
+  }
+  .progress-text {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8em;
+    font-weight: 700;
+  }
+
+  /* Gate status */
+  .gates {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+  .gate {
+    width: 36px; height: 36px;
+    border-radius: 6px;
+    border: 2px solid var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8em;
+    font-weight: 700;
+  }
+  .gate.active { border-color: var(--green); color: var(--green); }
+  .gate.loaded { background: var(--green); color: var(--bg); border-color: var(--green); }
+  .gate.empty { opacity: 0.4; }
+
+  .status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.8em;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .status-badge.running { background: var(--green); color: var(--bg); }
+  .status-badge.paused, .status-badge.pause_filament { background: var(--orange); color: var(--bg); }
+  .status-badge.idle, .status-badge.finish { background: var(--accent); color: var(--text); }
+  .status-badge.failed, .status-badge.error { background: var(--red); color: white; }
+
+  .updated {
+    font-size: 0.75em;
+    color: var(--muted);
+    text-align: right;
+    margin-top: 12px;
+  }
+
+  /* HMS alerts */
+  .alert {
+    background: rgba(231, 76, 60, 0.15);
+    border: 1px solid var(--red);
+    border-radius: 4px;
+    padding: 6px 10px;
+    margin-top: 6px;
+    font-size: 0.85em;
+  }
+</style>
+</head>
+<body>
+
+<h1>
+  <span class="dot" id="conn-dot"></span>
+  TradRack Bridge
+</h1>
+
+<div class="grid">
+  <!-- P1S Status -->
+  <div class="card">
+    <h2>BambuLab P1S</h2>
+    <div class="row">
+      <span class="label">Status</span>
+      <span id="p1s-status" class="value"></span>
+    </div>
+    <div class="row">
+      <span class="label">Job</span>
+      <span id="p1s-job" class="value">—</span>
+    </div>
+    <div class="progress-wrap">
+      <div class="progress-bar" id="p1s-progress-bar" style="width:0%"></div>
+      <div class="progress-text" id="p1s-progress-text">0%</div>
+    </div>
+    <div class="row">
+      <span class="label">Layer</span>
+      <span id="p1s-layer" class="value">—</span>
+    </div>
+    <div class="row">
+      <span class="label">ETA</span>
+      <span id="p1s-eta" class="value">—</span>
+    </div>
+    <div class="row">
+      <span class="label">Speed</span>
+      <span id="p1s-speed" class="value">—</span>
+    </div>
+  </div>
+
+  <!-- Temperatures -->
+  <div class="card">
+    <h2>Temperatures</h2>
+    <div class="row">
+      <span class="label">Nozzle</span>
+      <span id="temp-nozzle" class="value temp">—</span>
+    </div>
+    <div class="row">
+      <span class="label">Bed</span>
+      <span id="temp-bed" class="value temp">—</span>
+    </div>
+    <div class="row">
+      <span class="label">Chamber</span>
+      <span id="temp-chamber" class="value temp">—</span>
+    </div>
+    <div class="row">
+      <span class="label">Nozzle Info</span>
+      <span id="nozzle-info" class="value">—</span>
+    </div>
+  </div>
+
+  <!-- Fans -->
+  <div class="card">
+    <h2>Fans</h2>
+    <div class="row">
+      <span class="label">Part Cooling</span>
+      <span id="fan-part" class="value fan">—</span>
+    </div>
+    <div class="row">
+      <span class="label">Heatbreak</span>
+      <span id="fan-heatbreak" class="value fan">—</span>
+    </div>
+    <div class="row">
+      <span class="label">Aux Fan 1</span>
+      <span id="fan-aux1" class="value fan">—</span>
+    </div>
+    <div class="row">
+      <span class="label">Aux Fan 2</span>
+      <span id="fan-aux2" class="value fan">—</span>
+    </div>
+    <div class="row">
+      <span class="label">WiFi Signal</span>
+      <span id="wifi" class="value">—</span>
+    </div>
+  </div>
+
+  <!-- Bridge -->
+  <div class="card">
+    <h2>Bridge</h2>
+    <div class="row">
+      <span class="label">State</span>
+      <span id="bridge-state" class="value">—</span>
+    </div>
+    <div class="row">
+      <span class="label">Tool Changes</span>
+      <span id="bridge-completed" class="value ok">—</span>
+    </div>
+    <div class="row">
+      <span class="label">Failed</span>
+      <span id="bridge-failed" class="value">—</span>
+    </div>
+    <div class="row">
+      <span class="label">Current Tool</span>
+      <span id="bridge-tool" class="value">—</span>
+    </div>
+    <div class="row">
+      <span class="label">Sequence</span>
+      <span id="bridge-seq" class="value">—</span>
+    </div>
+  </div>
+
+  <!-- Happy Hare / MMU -->
+  <div class="card">
+    <h2>Happy Hare / TradRack</h2>
+    <div class="row">
+      <span class="label">Klipper</span>
+      <span id="hh-connected" class="value">—</span>
+    </div>
+    <div class="row">
+      <span class="label">MMU State</span>
+      <span id="hh-state" class="value">—</span>
+    </div>
+    <div class="row">
+      <span class="label">Current Tool</span>
+      <span id="hh-tool" class="value">—</span>
+    </div>
+    <div class="row">
+      <span class="label">Filament</span>
+      <span id="hh-loaded" class="value">—</span>
+    </div>
+    <div class="row">
+      <span class="label">Homed</span>
+      <span id="hh-homed" class="value">—</span>
+    </div>
+    <div class="label" style="margin-top:8px">Gates</div>
+    <div class="gates" id="hh-gates"></div>
+  </div>
+
+  <!-- Camera -->
+  {% if camera_enabled %}
+  <div class="card" style="grid-column: span 1;">
+    <h2>Camera</h2>
+    <img id="camera-img" src="/api/camera/stream"
+         style="width:100%; border-radius:4px; background:#000;"
+         onerror="this.alt='Camera stream unavailable'">
+  </div>
+  {% endif %}
+
+  <!-- HMS Alerts -->
+  <div class="card" id="hms-card" style="display:none">
+    <h2>Alerts</h2>
+    <div id="hms-list"></div>
+  </div>
+</div>
+
+<div class="updated" id="updated">—</div>
+
+<script>
+function fanPct(v) {
+  const n = parseInt(v, 10);
+  if (isNaN(n)) return v;
+  return Math.round(n / 15 * 100) + '%';
+}
+
+function formatEta(min) {
+  if (!min || min <= 0) return '—';
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return h > 0 ? h + 'h ' + m + 'm' : m + 'm';
+}
+
+function badge(text) {
+  const cls = text.toLowerCase().replace(' ', '_');
+  return '<span class="status-badge ' + cls + '">' + text + '</span>';
+}
+
+function update() {
+  fetch('/api/status')
+    .then(r => r.json())
+    .then(d => {
+      const p = d.p1s;
+      const h = d.happy_hare;
+      const b = d.bridge;
+
+      // Connection dot
+      const dot = document.getElementById('conn-dot');
+      dot.className = 'dot ' + (p.connected ? 'ok' : 'err');
+
+      // P1S
+      document.getElementById('p1s-status').innerHTML = badge(p.status);
+      document.getElementById('p1s-job').textContent = p.subtask_name || '—';
+      document.getElementById('p1s-progress-bar').style.width = p.mc_percent + '%';
+      document.getElementById('p1s-progress-text').textContent = p.mc_percent + '%';
+      document.getElementById('p1s-layer').textContent = p.layer_num + ' / ' + p.total_layers;
+      document.getElementById('p1s-eta').textContent = formatEta(p.mc_remaining_time);
+      document.getElementById('p1s-speed').textContent = p.spd_mag + '%';
+
+      // Temps
+      document.getElementById('temp-nozzle').textContent =
+        p.nozzle_temper.toFixed(1) + ' / ' + p.nozzle_target_temper.toFixed(1) + '°C';
+      document.getElementById('temp-bed').textContent =
+        p.bed_temper.toFixed(1) + ' / ' + p.bed_target_temper.toFixed(1) + '°C';
+      document.getElementById('temp-chamber').textContent =
+        p.chamber_temper.toFixed(1) + '°C';
+      document.getElementById('nozzle-info').textContent =
+        (p.nozzle_diameter || '?') + 'mm ' + (p.nozzle_type || '').replace('_', ' ');
+
+      // Fans
+      document.getElementById('fan-part').textContent = fanPct(p.cooling_fan_speed);
+      document.getElementById('fan-heatbreak').textContent = fanPct(p.heatbreak_fan_speed);
+      document.getElementById('fan-aux1').textContent = fanPct(p.big_fan1_speed);
+      document.getElementById('fan-aux2').textContent = fanPct(p.big_fan2_speed);
+      document.getElementById('wifi').textContent = p.wifi_signal || '—';
+
+      // Bridge
+      if (b && b.state) {
+        document.getElementById('bridge-state').innerHTML = badge(b.state);
+        document.getElementById('bridge-completed').textContent = b.tool_changes_completed;
+        document.getElementById('bridge-failed').textContent = b.tool_changes_failed;
+        document.getElementById('bridge-failed').className =
+          'value ' + (b.tool_changes_failed > 0 ? 'err' : '');
+        document.getElementById('bridge-tool').textContent =
+          b.current_tool !== null ? 'T' + b.current_tool : '—';
+        document.getElementById('bridge-seq').textContent = b.sequence_position;
+      }
+
+      // Happy Hare
+      if (h.connected) {
+        document.getElementById('hh-connected').innerHTML =
+          '<span class="ok">Connected</span>';
+        document.getElementById('hh-state').textContent = h.state || '—';
+        document.getElementById('hh-tool').textContent =
+          h.current_tool >= 0 ? 'T' + h.current_tool : 'None';
+        document.getElementById('hh-loaded').textContent =
+          h.filament_loaded ? 'Loaded' : 'Empty';
+        document.getElementById('hh-loaded').className =
+          'value ' + (h.filament_loaded ? 'ok' : '');
+        document.getElementById('hh-homed').textContent = h.is_homed ? 'Yes' : 'No';
+
+        // Gates
+        const gc = document.getElementById('hh-gates');
+        gc.innerHTML = '';
+        if (h.gate_status && h.gate_status.length > 0) {
+          h.gate_status.forEach((s, i) => {
+            const el = document.createElement('div');
+            el.className = 'gate';
+            el.textContent = i;
+            if (i === h.current_tool && h.filament_loaded) {
+              el.classList.add('loaded');
+            } else if (s > 0) {
+              el.classList.add('active');
+            } else {
+              el.classList.add('empty');
+            }
+            gc.appendChild(el);
+          });
+        }
+      } else {
+        document.getElementById('hh-connected').innerHTML =
+          '<span class="err">Disconnected</span>';
+        document.getElementById('hh-state').textContent = '—';
+        document.getElementById('hh-tool').textContent = '—';
+        document.getElementById('hh-loaded').textContent = '—';
+        document.getElementById('hh-homed').textContent = '—';
+        document.getElementById('hh-gates').innerHTML = '';
+      }
+
+      // HMS alerts
+      const hmsCard = document.getElementById('hms-card');
+      const hmsList = document.getElementById('hms-list');
+      if (p.hms && p.hms.length > 0) {
+        hmsCard.style.display = '';
+        hmsList.innerHTML = '';
+        p.hms.forEach(a => {
+          const el = document.createElement('div');
+          el.className = 'alert';
+          el.textContent = JSON.stringify(a);
+          hmsList.appendChild(el);
+        });
+      } else {
+        hmsCard.style.display = 'none';
+      }
+
+      // Print error
+      if (p.print_error && p.print_error !== 0) {
+        document.getElementById('p1s-status').innerHTML +=
+          ' <span class="err">(error: ' + p.print_error + ')</span>';
+      }
+
+      document.getElementById('updated').textContent =
+        'Updated: ' + new Date().toLocaleTimeString();
+    })
+    .catch(() => {
+      document.getElementById('conn-dot').className = 'dot err';
+      document.getElementById('updated').textContent = 'Connection lost';
+    });
+}
+
+update();
+setInterval(update, 2000);
+</script>
+</body>
+</html>
