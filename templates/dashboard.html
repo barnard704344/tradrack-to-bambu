@@ -141,6 +141,25 @@
     margin-top: 12px;
   }
 
+  /* Camera lightbox */
+  #camera-img { cursor: pointer; }
+  .lightbox {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.9);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .lightbox.open { display: flex; }
+  .lightbox img {
+    max-width: 95vw;
+    max-height: 95vh;
+    border-radius: 6px;
+  }
+
   /* HMS alerts */
   .alert {
     background: rgba(231, 76, 60, 0.15);
@@ -293,7 +312,11 @@
     <h2>Camera</h2>
     <img id="camera-img" src="/api/camera/stream"
          style="width:100%; border-radius:4px; background:#000;"
-         onerror="this.alt='Camera stream unavailable'">
+         onerror="this.alt='Camera stream unavailable'"
+         onclick="document.getElementById('lightbox').classList.add('open')">
+  </div>
+  <div id="lightbox" class="lightbox" onclick="this.classList.remove('open')">
+    <img src="/api/camera/stream">
   </div>
   {% endif %}
 
